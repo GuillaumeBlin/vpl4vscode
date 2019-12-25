@@ -1,0 +1,6 @@
+{
+  "open":false,
+  "port": 10001,
+  "files": ["./src/**/*.{html,htm,css,js}"],
+  "server": { "baseDir": "./vnc" }
+}

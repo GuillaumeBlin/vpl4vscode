@@ -1,0 +1,13 @@
+{
+	"extension.httpsAddress.description": "Specifies the moodle webserver IP address to use.",
+	"extension.wsToken.description": "Specifies the moodle Webservice Token of the user.",
+	"extension.activityId.description": "Specifies the moodle VPL activity ID.",
+	"extension.vpl_reset.title": "VPL Reset",
+	"extension.vpl_renewtoken.title": "VPL Renew Token",
+	"extension.vpl_open.title": "VPL Open New Activity",
+	"extension.vpl_load.title": "VPL Load Last Submited Files",
+	"extension.vpl_save.title": "VPL Save",
+	"extension.vpl_run.title": "VPL Run",
+	"extension.vpl_debug.title": "VPL Debug",
+	"extension.vpl_evaluate.title": "VPL Evaluate"
+}

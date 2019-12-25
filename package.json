@@ -1,0 +1,115 @@
+{
+	"name": "vpl4vscode",
+	"publisher": "GuillaumeBlin",
+	"displayName": "VPL4VSCode",
+	"description": "",
+	"version": "0.0.1",
+	"engines": {
+		"vscode": "^1.33.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onCommand:extension.vpl_reset",
+		"onCommand:extension.vpl_open",
+		"onCommand:extension.vpl_load",
+		"onCommand:extension.vpl_save",
+		"onCommand:extension.vpl_evaluate",
+		"onCommand:extension.vpl_run",
+		"onCommand:extension.vpl_debug",
+		"onCommand:extension.vpl_renewtoken"
+	],
+	"main": "./out/extension.js",
+	"contributes": {
+		"configuration": {
+			"title": "VPL4VSCode",
+			"properties": {
+				"VPL4VSCode.httpsAddress": {
+					"type": "string",
+					"scope": "resource",
+					"format": "uri",
+					"default": null,
+					"description": "%extension.httpsAddress.description%"
+				},
+				"VPL4VSCode.wsToken": {
+					"type": "string",
+					"scope": "resource",
+					"default": null,
+					"description": "%extension.wsToken.description%"
+				},
+				"VPL4VSCode.activityId": {
+					"type": "number",
+					"scope": "resource",
+					"default": null,
+					"description": "%extension.activityId.description%"
+				}
+			}
+		},
+		"commands": [
+			{
+				"command": "extension.vpl_reset",
+				"title": "%extension.vpl_reset.title%"
+			},
+			{
+				"command": "extension.vpl_renewtoken",
+				"title": "%extension.vpl_renewtoken.title%"
+			},
+			{
+				"command": "extension.vpl_open",
+				"title": "%extension.vpl_open.title%"
+			},
+			{
+				"command": "extension.vpl_load",
+				"title": "%extension.vpl_load.title%"
+			},
+			{
+				"command": "extension.vpl_save",
+				"title": "%extension.vpl_save.title%"
+			},
+			{
+				"command": "extension.vpl_evaluate",
+				"title": "%extension.vpl_evaluate.title%"
+			},
+			{
+				"command": "extension.vpl_run",
+				"title": "%extension.vpl_run.title%"
+			},
+			{
+				"command": "extension.vpl_debug",
+				"title": "%extension.vpl_debug.title%"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "tsc -p ./",
+		"watch": "tsc -watch -p ./",
+		"postinstall": "node ./node_modules/vscode/bin/install",
+		"test": "npm run compile && node ./node_modules/vscode/bin/test",
+		"lite": "lite-server -c bs-config.json",
+		"start": "npm run lite"
+	},
+	"devDependencies": {
+		"@types/mocha": "^2.2.42",
+		"@types/node": "^10.17.12",
+		"lite-server": "^2.3.0",
+		"tslint": "^5.12.1",
+		"typescript": "^3.3.1",
+		"vscode": "^1.1.28"
+	},
+	"dependencies": {
+		"@types/socket.io": "^2.1.2",
+		"@types/socket.io-client": "^1.4.32",
+		"@types/ws": "^6.0.1",
+		"fs-extra": "^8.1.0",
+		"gulp": "^4.0.2",
+		"moodle-client-2": "^0.2.1",
+		"moodle-rest-client": "^0.1.0",
+		"socket.io": "^2.2.0",
+		"typed-rest-client": "^1.2.0",
+		"vsce": "^1.66.0",
+		"vscode-nls": "^4.1.1",
+		"ws": "^7.0.0"
+	}
+}
