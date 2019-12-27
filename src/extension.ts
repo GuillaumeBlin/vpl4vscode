@@ -2,12 +2,8 @@ import * as fs from "fs";
 import * as path from 'path';
 import * as rm from 'typed-rest-client';
 import * as vscode from 'vscode';
-
-import * as nls from 'vscode-nls';
-
 import * as dicofr from './dico.fr.json';
 import * as dicoen from './dico.en.json';
-
 
 const config = (process.env.VSCODE_NLS_CONFIG ? JSON.parse(process.env.VSCODE_NLS_CONFIG) : undefined);
 var dico: any = dicoen;
@@ -91,11 +87,8 @@ interface IRequestOptions {
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
 let server: string = "";
-//let p: IProxyConfiguration = { proxyUrl: "https://moodle1.u-bordeaux.fr" };
-let opt: IRequestOptions = { allowRetries: true, ignoreSslError: true }; //proxy: p, 
+let opt: IRequestOptions = { allowRetries: true, ignoreSslError: true };
 let rest: rm.RestClient = new rm.RestClient('rest-samples', undefined, undefined, opt);
-//let opthttp: IRequestOptions = { socketTimeout: 1, allowRetries: false };
-//let httpc: rm.RestClient = new rm.RestClient('vsts-node-api', 'http://localhost:10001', undefined, opthttp);
 
 var diagnosticCollection = vscode.languages.createDiagnosticCollection();
 let _channel: vscode.OutputChannel = vscode.window.createOutputChannel('VPL');
@@ -477,9 +470,10 @@ async function runUserFiles(debug = false) {
 							}
 							VPLChannelMessage.text = "[ $(rocket) VPLBdx -" + d.charAt(0).toUpperCase() + d.slice(1) + " ]";
 							if (data.startsWith("run:vnc")) {
+								vscode.commands.executeCommand('extension.liveServer.goOnline');
 								var path = URLe.slice(URLe.lastIndexOf("/", URLe.lastIndexOf("/", URLe.lastIndexOf("/") - 1) - 1) + 1);
 								var host = URLe.substr(6, URLe.indexOf(path) - 6);
-								vscode.env.openExternal(vscode.Uri.parse('http://localhost:10001/vnc_lite.html?host=' + host + '&password=' + data.slice(8) + '&path=' + path));
+								vscode.env.openExternal(vscode.Uri.parse('http://localhost:33400/vnc_lite.html?host=' + host + '&password=' + data.slice(8) + '&path=' + path));
 							}
 							if (data === "run:terminal") {
 								const wse = new WebSocket(URLe);
@@ -641,9 +635,15 @@ export async function activate(context: vscode.ExtensionContext) {
 	VPLChannelMessage.text = '[ $(note) VPL ]';
 	VPLChannelMessage.color = '#FFF500';
 	VPLChannelMessage.tooltip = dico["global.output.message"];
+	/*var t = vscode.window.createTerminal({ name: 'Command', cwd: extensionPath });
+	t.sendText("npm start");*/
+	vscode.workspace.getConfiguration('liveServer.settings').update("port", 33400, false);
+	let ext = vscode.extensions.getExtension("GuillaumeBlin.vpl4vscode");
 
-	var t = vscode.window.createTerminal({ name: 'Command', cwd: extensionPath });
-	t.sendText("npm start");
+	if (ext) {
+		vscode.workspace.getConfiguration('liveServer.settings').update("root", ext.extensionPath + "/vnc", false);
+	}
+
 }
 
 // this method is called when your extension is deactivated

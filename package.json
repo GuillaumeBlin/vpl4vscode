@@ -3,6 +3,7 @@
 	"publisher": "GuillaumeBlin",
 	"displayName": "VPL4VSCode",
 	"description": "",
+	"repository": "https://github.com/GuillaumeBlin/vpl4vscode",
 	"version": "0.0.1",
 	"engines": {
 		"vscode": "^1.33.0"
@@ -86,14 +87,14 @@
 		"compile": "tsc -p ./",
 		"watch": "tsc -watch -p ./",
 		"postinstall": "node ./node_modules/vscode/bin/install",
-		"test": "npm run compile && node ./node_modules/vscode/bin/test",
-		"lite": "lite-server -c bs-config.json",
-		"start": "npm run lite"
+		"test": "npm run compile && node ./node_modules/vscode/bin/test"
 	},
+	"extensionDependencies": [
+		"ritwickdey.LiveServer"
+	],
 	"devDependencies": {
 		"@types/mocha": "^2.2.42",
 		"@types/node": "^10.17.12",
-		"lite-server": "^2.3.0",
 		"tslint": "^5.12.1",
 		"typescript": "^3.3.1",
 		"vscode": "^1.1.28"
