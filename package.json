@@ -2,9 +2,8 @@
 	"name": "vpl4vscode",
 	"publisher": "GuillaumeBlin",
 	"displayName": "VPL4VSCode",
-	"repository":"https://github.com/GuillaumeBlin/vpl4vscode",
-	"description": "",
 	"repository": "https://github.com/GuillaumeBlin/vpl4vscode",
+	"description": "",
 	"version": "0.0.1",
 	"engines": {
 		"vscode": "^1.33.0"
