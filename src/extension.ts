@@ -199,7 +199,7 @@ async function getFilesInfo(wsfunction: string, infos: any = undefined) {
 			infos = await getAccessInfo();
 		}
 		if (infos) {
-			let res: rm.IRestResponse<BRaw> = await rest.get<BRaw>(infos.httpsAddress + "&wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=" + wsfunction);
+			let res: rm.IRestResponse<BRaw> = await rest.get<BRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=" + wsfunction);
 			console.log(res);
 			if (res.result) {
 				if (res.result.reqfiles) {
@@ -316,7 +316,7 @@ async function display() {
 	var infos = await getAccessInfo();
 	if (infos) {
 		try {
-			let res: rm.IRestResponse<ResEvaluateRaw> = await rest.get<ResEvaluateRaw>(infos.httpsAddress + "&wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=mod_vpl_get_result");
+			let res: rm.IRestResponse<ResEvaluateRaw> = await rest.get<ResEvaluateRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=mod_vpl_get_result");
 			if (res.result) {
 				createCompilationReport("" + res.result.compilation);
 				getOutputChannel().appendLine("Evaluation:\n" + res.result.evaluation);
@@ -376,7 +376,7 @@ async function evaluateUserFiles() {
 	var infos = await getAccessInfo();
 	if (infos) {
 		try {
-			let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "&wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=mod_vpl_evaluate');
+			let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=mod_vpl_evaluate');
 			if (res.result) {
 				if (res.result.exception) {
 					vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + res.result.message);
@@ -435,7 +435,7 @@ async function runUserFiles(debug = false) {
 	if (infos) {
 		try {
 			VPLChannelMessage.text = "[ $(rocket) VPLBdx - " + dico["global.ws.processing"] + " ]";
-			let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "&wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=' + (debug ? 'mod_vpl_debug' : 'mod_vpl_run'));
+			let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=' + (debug ? 'mod_vpl_debug' : 'mod_vpl_run'));
 			if (res.result) {
 				if (res.result.exception) {
 					vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + res.result.message);
