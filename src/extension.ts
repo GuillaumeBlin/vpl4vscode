@@ -12,6 +12,12 @@ if (config && config['locale'] === 'fr') {
 	dico = dicofr;
 }
 
+interface VPLException {
+	exception: string;
+	message: string;
+}
+
+
 interface VPLFile {
 	name: string;
 	data: string;
@@ -348,6 +354,19 @@ async function getUserCurrentFiles() {
 	getOriginalFiles(true);
 }
 
+function readFiles(folder: vscode.Uri, files: VPLFile[]) {
+	var infos = '';
+	var i: number = 0;
+	files.forEach(element => {
+		infos = infos + "&files[" + i + "][name]=" + encodeHTML(element.name) + "&files[" + i + "][data]=";
+		var content = fs.readFileSync(folder.fsPath + '/' + element.name, 'utf8');
+		infos = infos + encodeHTML(content);
+		i++;
+	});
+	return infos;
+
+}
+
 async function saveUserFiles() {
 	var infos = await getAccessInfo();
 	if (infos) {
@@ -358,6 +377,15 @@ async function saveUserFiles() {
 				let folder = vscode.Uri.file(path.dirname(editor.document.uri.fsPath));
 				if (checkRequiredFilesArePresent(folder, files)) {
 					try {
+						var filedata = readFiles(vscode.Uri.file(path.dirname(editor.document.uri.fsPath)), files);
+						var res = await rest.client.post(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=mod_vpl_save' + filedata, "");
+						let body: VPLException = JSON.parse(await res.readBody());
+						if (body) {
+							if (body.exception) {
+								vscode.window.showErrorMessage(body.message);
+								return;
+							}
+						}
 						if (checkFilesAreCorrectlySaved(folder)) {
 							VPLChannelMessage.text = "[ $(save) VPL - " + dico["saveUserFiles.filesaved"] + " ]";
 						}
