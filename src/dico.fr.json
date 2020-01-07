@@ -18,6 +18,7 @@
 	"global.ws.processing": "En cours...",
 	"global.ws.reachability": "Impossible de joindre ",
 	"global.yes": "Oui",
+	"global.reconnect": "Ouvrir moodle",
 	"runUserFiles.io": "VPL Shell assurant les e/s de votre programme",
 	"saveUserFiles.filesaved": "Sauvegarde sous moodle finie",
 	"setProjectFolder.choice": "Choisir/Créer un dossier.",

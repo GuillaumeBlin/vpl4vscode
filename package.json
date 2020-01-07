@@ -26,6 +26,13 @@
 		"configuration": {
 			"title": "VPL4VSCode",
 			"properties": {
+				"VPL4VSCode.httpsViewerAddress": {
+					"type": "string",
+					"scope": "resource",
+					"format": "uri",
+					"default": null,
+					"description": "%extension.httpsAddress.description%"
+				},
 				"VPL4VSCode.httpsAddress": {
 					"type": "string",
 					"scope": "resource",
@@ -44,6 +51,12 @@
 					"scope": "resource",
 					"default": null,
 					"description": "%extension.activityId.description%"
+				},
+				"VPL4VSCode.intro": {
+					"type": "string",
+					"scope": "resource",
+					"default": null,
+					"description": "%extension.intro.description%"
 				}
 			}
 		},

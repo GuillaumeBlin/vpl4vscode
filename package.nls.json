@@ -2,6 +2,7 @@
 	"extension.httpsAddress.description": "Specifies the moodle webserver IP address to use.",
 	"extension.wsToken.description": "Specifies the moodle Webservice Token of the user.",
 	"extension.activityId.description": "Specifies the moodle VPL activity ID.",
+	"extension.intro.description": "Specifies the description of the VPL activity ID.",
 	"extension.vpl_reset.title": "VPL Reset",
 	"extension.vpl_renewtoken.title": "VPL Renew Token",
 	"extension.vpl_open.title": "VPL Open New Activity",
