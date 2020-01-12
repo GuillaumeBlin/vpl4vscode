@@ -12,6 +12,7 @@
 		"Other"
 	],
 	"activationEvents": [
+		"onView:vpl-commands",
 		"onCommand:extension.vpl_reset",
 		"onCommand:extension.vpl_open",
 		"onCommand:extension.vpl_load",
@@ -23,6 +24,27 @@
 	],
 	"main": "./out/extension.js",
 	"contributes": {
+		"views": {
+			"vpl-bdx": [
+				{
+					"id": "vpl-commands",
+					"name": "Commands"
+				},
+				{
+					"id": "vpl-explorer",
+					"name": "VPL activity files"
+				}
+			]
+		},
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "vpl-bdx",
+					"title": "VPL BDX",
+					"icon": "resources/VPLBDXLOGO.svg"
+				}
+			]
+		},
 		"configuration": {
 			"title": "VPL4VSCode",
 			"properties": {
@@ -66,6 +88,18 @@
 				"title": "%extension.vpl_reset.title%"
 			},
 			{
+				"command": "extension.vpl_show_description",
+				"title": "truc"
+			},
+			{
+				"command": "extension.vpl_show_output",
+				"title": "truc"
+			},
+			{
+				"command": "extension.vpl_show_report",
+				"title": "truc"
+			},
+			{
 				"command": "extension.vpl_renewtoken",
 				"title": "%extension.vpl_renewtoken.title%"
 			},
@@ -106,6 +140,7 @@
 		"ritwickdey.LiveServer"
 	],
 	"devDependencies": {
+		"@types/mkdirp": "^0.5.2",
 		"@types/mocha": "^2.2.42",
 		"@types/node": "^10.17.12",
 		"tslint": "^5.12.1",
