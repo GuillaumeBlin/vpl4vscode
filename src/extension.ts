@@ -105,6 +105,10 @@ let VPLChannelMessage: vscode.StatusBarItem;
 let currentFolder: (vscode.Uri | undefined);
 let VPLShell: vscode.Terminal;
 
+vscode.workspace.onDidChangeTextDocument(e => {
+	diagnosticCollection.delete(e.document.uri);
+});
+
 function getOutputChannel(): vscode.OutputChannel {
 	return _channel;
 }
@@ -319,6 +323,7 @@ async function createCompilationReport(text: string) {
 	var regex_message = /^(.*):(\d+):(\d+):\s+(warning|error):\s+(.*)$/;
 	var regex_complement = /^\s+(.*)$/;
 	var editor = vscode.window.activeTextEditor;
+	var noSevereError = true;
 	var folder: string;
 	if (editor) {
 		folder = path.dirname(editor.document.uri.fsPath);
@@ -345,6 +350,9 @@ async function createCompilationReport(text: string) {
 				}
 			}
 			severity = (match[4] === "warning" ? vscode.DiagnosticSeverity.Warning : vscode.DiagnosticSeverity.Error);
+			if (severity === vscode.DiagnosticSeverity.Error) {
+				noSevereError = false;
+			}
 			message = match[5];
 			range = new vscode.Range(+match[2] - 1, +match[3], +match[2] - 1, +match[3]);
 			file = match[1];
@@ -368,6 +376,7 @@ async function createCompilationReport(text: string) {
 		diagnosticCollection.set(vscode.Uri.file(folder + '/' + key), element);
 	});
 	vscode.commands.executeCommand('workbench.action.problems.focus');
+	return noSevereError;
 }
 
 async function display() {
@@ -377,12 +386,11 @@ async function display() {
 			let res: rm.IRestResponse<ResEvaluateRaw> = await rest.get<ResEvaluateRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=mod_vpl_get_result");
 			if (res.result) {
 				getOutputChannel().clear();
-				createCompilationReport("" + res.result.compilation);
-				getOutputChannel().appendLine("Evaluation:\n" + res.result.evaluation);
+				if (createCompilationReport("" + res.result.compilation)) {
+					getOutputChannel().appendLine("Evaluation:\n" + res.result.evaluation);
+					getOutputChannel().show(true);
+				}
 				commandDataProvider.setDescription(dico["extension.vpl.evaluate"], '' + res.result.grade);
-				//VPLChannel.text = '[ $(bookmark) VPL - ' + res.result.grade + ' ]';
-
-				getOutputChannel().show(true);
 			}
 		} catch (err) {
 			vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
@@ -561,7 +569,7 @@ async function runUserFiles(debug = false) {
 		var infos = await getAccessInfo();
 		if (infos) {
 			try {
-				commandDataProvider.setDescription(dico["extension.vpl.run"], dico["global.ws.processing"]);
+				commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.processing"]);
 				let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=' + (debug ? 'mod_vpl_debug' : 'mod_vpl_run'));
 				if (res.result) {
 					if (res.result.exception) {
@@ -576,69 +584,82 @@ async function runUserFiles(debug = false) {
 						} else {
 							var URLm = res.result.monitorURL;
 							var URLe = res.result.executeURL;
-							const ws = new WebSocket(URLm);
+							var ws = new WebSocket(URLm);
+							var abort = false;
 							ws.on('error', function incoming() {
 								vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
 							});
 
 							ws.on('close', function open() {
-								commandDataProvider.setDescription(dico["extension.vpl.run"], '');
+								setTimeout(() => {
+									commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), '');
+								}, 2000);
 								resolve();
 							});
 
 							ws.on('open', function open() {
-								commandDataProvider.setDescription(dico["extension.vpl.run"], dico["global.ws.connecting"]);
+								commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.connecting"]);
 							});
 							ws.on('message', async function incoming(data: string) {
-								var d = data.replace("message:", "");
-								//console.log(data);
-								if (data.startsWith("compilation:")) {
-									createCompilationReport("" + data.substr(12));
-								}
-								commandDataProvider.setDescription(dico["extension.vpl.run"], d.charAt(0).toUpperCase() + d.slice(1));
-								if (data.startsWith("run:vnc")) {
-									vscode.commands.executeCommand('extension.liveServer.goOnline');
-									var path = URLe.slice(URLe.lastIndexOf("/", URLe.lastIndexOf("/", URLe.lastIndexOf("/") - 1) - 1) + 1);
-									var host = URLe.substr(6, URLe.indexOf(path) - 6);
-									vscode.env.openExternal(vscode.Uri.parse('http://localhost:33400/vnc_lite.html?host=' + host + '&password=' + data.slice(8) + '&path=' + path));
-								}
-								if (data === "run:terminal") {
-									const wse = new WebSocket(URLe);
-
-
-									let writeEmitter = new vscode.EventEmitter<string>();
-									let pty: any = {
-										onDidWrite: writeEmitter.event,
-										open: () => writeEmitter.fire('-- ' + dico["runUserFiles.io"] + ' --\r\n\r\n'),
-										close: () => { },
-										handleInput: (data: string) => {
-											wse.send(data);
+								if (!abort) {
+									var d = data.replace("message:", "");
+									//console.log(data);
+									if (data.startsWith("compilation:")) {
+										var problem: boolean | undefined = await createCompilationReport("" + data.substr(12));
+										if (!problem) {
+											abort = true;
+											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["extension.vpl.compilation_problem"]);
+											ws.send("close:");
+											ws.close();
+											resolve();
+											return;
 										}
-									};
-									if (VPLShell) {
-										VPLShell.dispose();
 									}
-									VPLShell = (<any>vscode.window).createTerminal({ name: `VPL Shell`, pty });
-									VPLShell.show();
-									vscode.commands.executeCommand('workbench.action.terminal.clear');
+									commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), d.charAt(0).toUpperCase() + d.slice(1));
+									if (data.startsWith("run:vnc")) {
+										vscode.commands.executeCommand('extension.liveServer.goOnline');
+										var path = URLe.slice(URLe.lastIndexOf("/", URLe.lastIndexOf("/", URLe.lastIndexOf("/") - 1) - 1) + 1);
+										var host = URLe.substr(6, URLe.indexOf(path) - 6);
+										vscode.env.openExternal(vscode.Uri.parse('http://localhost:33400/vnc_lite.html?host=' + host + '&password=' + data.slice(8) + '&path=' + path));
+									}
+									if (data === "run:terminal") {
+										const wse = new WebSocket(URLe);
 
-									wse.on('error', function incoming() {
-										vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
-									});
 
-									wse.on('close', function open() {
-										commandDataProvider.setDescription(dico["extension.vpl.run"], '');
-										ws.close();
-										resolve();
-									});
+										let writeEmitter = new vscode.EventEmitter<string>();
+										let pty: any = {
+											onDidWrite: writeEmitter.event,
+											open: () => writeEmitter.fire('-- ' + dico["runUserFiles.io"] + ' --\r\n\r\n'),
+											close: () => { },
+											handleInput: (data: string) => {
+												wse.send(data);
+											}
+										};
+										if (VPLShell) {
+											VPLShell.dispose();
+										}
+										VPLShell = (<any>vscode.window).createTerminal({ name: `VPL Shell`, pty });
+										VPLShell.show();
+										vscode.commands.executeCommand('workbench.action.terminal.clear');
 
-									wse.on('open', function open() {
-										commandDataProvider.setDescription(dico["extension.vpl.run"], dico["global.ws.connecting"]);
-									});
+										wse.on('error', function incoming() {
+											vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
+										});
 
-									wse.on('message', function incoming(data: string) {
-										writeEmitter.fire(data);
-									});
+										wse.on('close', function open() {
+											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), '');
+											ws.close();
+											resolve();
+										});
+
+										wse.on('open', function open() {
+											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.connecting"]);
+										});
+
+										wse.on('message', function incoming(data: string) {
+											writeEmitter.fire(data);
+										});
+									}
 								}
 							});
 						}
@@ -697,7 +718,18 @@ export async function activate(context: vscode.ExtensionContext) {
 	vscode.window.createTreeView("vpl-explorer", { treeDataProvider });
 
 	let disposable = vscode.commands.registerCommand('extension.vpl_show_description', async () => {
-		CatCodingPanel.createOrShow(context.extensionPath);
+		var content: string = vscode.workspace.getConfiguration('', currentFolder).get('VPL4VSCode.intro') || '';
+		var regex = /.*/;
+		if (config) {
+			if (config['locale'] === "fr") {
+				regex = /{\s*mlang\s+\b(?!fr\b)\w+\s*}(.*?){\s*mlang\s*}/gis;
+			}
+			if (config['locale'] === "en") {
+				regex = /{\s*mlang\s+\b(?!en\b)\w+\s*}(.*?){\s*mlang\s*}/gis;
+			}
+			VPLPanel.createOrShow(context.extensionPath, content.replace(regex, "").replace(/{\s*mlang\s*\w*\s*}/gis, ""));
+		}
+
 	});
 
 	context.subscriptions.push(disposable);
@@ -803,7 +835,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disposable);
 	disposable = vscode.commands.registerCommand('extension.vpl_run', async () => {
-		VPLChannelMessage.show();
+		//VPLChannelMessage.show();
 		setCurrentFolder();
 		runUserFiles();
 
@@ -890,7 +922,10 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 			new TreeItem(this.context, dico["extension.vpl.debug"], {
 				command: 'extension.vpl_debug',
 				title: ''
-			}, 'bug-solid'),
+			}, 'bug-solid', [new TreeItem(this.context, dico["extension.vpl.show_output"], {
+				command: 'extension.vpl_show_output',
+				title: ''
+			}, 'eye-solid')]),
 			new TreeItem(this.context, dico["extension.vpl.evaluate"], {
 				command: 'extension.vpl_evaluate',
 				title: ''
@@ -1027,48 +1062,50 @@ const cats = {
 /**
  * Manages cat coding webview panels
  */
-class CatCodingPanel {
+class VPLPanel {
 	/**
 	 * Track the currently panel. Only allow a single panel to exist at a time.
 	 */
-	public static currentPanel: CatCodingPanel | undefined;
+	public static currentPanel: VPLPanel | undefined;
 
-	public static readonly viewType = 'catCoding';
+	public static readonly viewType = 'VPL';
 
 	private readonly _panel: vscode.WebviewPanel;
 	private readonly _extensionPath: string;
 	private _disposables: vscode.Disposable[] = [];
 
-	public static createOrShow(extensionPath: string) {
+	public static createOrShow(extensionPath: string, content: string = '') {
 		const column = vscode.window.activeTextEditor
 			? vscode.window.activeTextEditor.viewColumn
 			: undefined;
 
 		// If we already have a panel, show it.
-		if (CatCodingPanel.currentPanel) {
-			CatCodingPanel.currentPanel._panel.reveal(column);
-			return;
+		if (VPLPanel.currentPanel) {
+			VPLPanel.currentPanel._panel.reveal(column);
+
+		} else {
+
+			// Otherwise, create a new panel.
+			const panel = vscode.window.createWebviewPanel(
+				VPLPanel.viewType,
+				'Description',
+				column || vscode.ViewColumn.One,
+				{
+					// Enable javascript in the webview
+					enableScripts: true,
+
+					// And restrict the webview to only loading content from our extension's `media` directory.
+					localResourceRoots: [vscode.Uri.file(path.join(extensionPath, 'media'))]
+				}
+			);
+
+			VPLPanel.currentPanel = new VPLPanel(panel, extensionPath);
 		}
-
-		// Otherwise, create a new panel.
-		const panel = vscode.window.createWebviewPanel(
-			CatCodingPanel.viewType,
-			'Cat Coding',
-			column || vscode.ViewColumn.One,
-			{
-				// Enable javascript in the webview
-				enableScripts: true,
-
-				// And restrict the webview to only loading content from our extension's `media` directory.
-				localResourceRoots: [vscode.Uri.file(path.join(extensionPath, 'media'))]
-			}
-		);
-
-		CatCodingPanel.currentPanel = new CatCodingPanel(panel, extensionPath);
+		VPLPanel.currentPanel._update(content);
 	}
 
 	public static revive(panel: vscode.WebviewPanel, extensionPath: string) {
-		CatCodingPanel.currentPanel = new CatCodingPanel(panel, extensionPath);
+		VPLPanel.currentPanel = new VPLPanel(panel, extensionPath);
 	}
 
 	private constructor(panel: vscode.WebviewPanel, extensionPath: string) {
@@ -1076,22 +1113,12 @@ class CatCodingPanel {
 		this._extensionPath = extensionPath;
 
 		// Set the webview's initial html content
-		this._update();
+		this._update('');
 
 		// Listen for when the panel is disposed
 		// This happens when the user closes the panel or when the panel is closed programatically
 		this._panel.onDidDispose(() => this.dispose(), null, this._disposables);
 
-		// Update the content based on view changes
-		this._panel.onDidChangeViewState(
-			e => {
-				if (this._panel.visible) {
-					this._update();
-				}
-			},
-			null,
-			this._disposables
-		);
 
 		// Handle messages from the webview
 		this._panel.webview.onDidReceiveMessage(
@@ -1114,7 +1141,7 @@ class CatCodingPanel {
 	}
 
 	public dispose() {
-		CatCodingPanel.currentPanel = undefined;
+		VPLPanel.currentPanel = undefined;
 
 		// Clean up our resources
 		this._panel.dispose();
@@ -1127,60 +1154,20 @@ class CatCodingPanel {
 		}
 	}
 
-	private _update() {
+	public _update(content: string) {
 		const webview = this._panel.webview;
-
-		// Vary the webview's content based on where it is located in the editor.
-		switch (this._panel.viewColumn) {
-			case vscode.ViewColumn.Two:
-				this._updateForCat(webview, 'Compiling Cat');
-				return;
-
-			case vscode.ViewColumn.Three:
-				this._updateForCat(webview, 'Testing Cat');
-				return;
-
-			case vscode.ViewColumn.One:
-			default:
-				this._updateForCat(webview, 'Coding Cat');
-				return;
-		}
-	}
-
-	private _updateForCat(webview: vscode.Webview, catName: keyof typeof cats) {
-		this._panel.title = catName;
-		this._panel.webview.html = this._getHtmlForWebview(webview, cats[catName]);
-	}
-
-	private _getHtmlForWebview(webview: vscode.Webview, catGifPath: string) {
-		// Local path to main script run in the webview
-		const scriptPathOnDisk = vscode.Uri.file(
-			path.join(this._extensionPath, 'media', 'main.js')
-		);
-
 		// And the uri we use to load this script in the webview
 
-
-		return `<!DOCTYPE html>
+		webview.html = `<!DOCTYPE html>
             <html lang="en">
             <head>
                 <meta charset="UTF-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Cat Coding</title>
+                <title>Description</title>
             </head>
             <body>
-                <img src="${catGifPath}" width="300" />
-                <h1 id="lines-of-code-counter">0</h1>
+                ${content}
             </body>
             </html>`;
 	}
-}
-
-function getNonce() {
-	let text = '';
-	const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-	for (let i = 0; i < 32; i++) {
-		text += possible.charAt(Math.floor(Math.random() * possible.length));
-	}
-	return text;
 }
