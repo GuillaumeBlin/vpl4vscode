@@ -12,6 +12,7 @@
 		"Other"
 	],
 	"activationEvents": [
+		"onUri",
 		"onView:vpl-commands",
 		"onCommand:extension.vpl_reset",
 		"onCommand:extension.vpl_open",

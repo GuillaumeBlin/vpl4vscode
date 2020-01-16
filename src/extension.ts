@@ -9,6 +9,8 @@ import { FileSystemProvider } from './fileExplorer';
 const config = (process.env.VSCODE_NLS_CONFIG ? JSON.parse(process.env.VSCODE_NLS_CONFIG) : undefined);
 var dico: any = dicoen;
 
+var faq: vscode.Uri, faqFolder: vscode.Uri;
+
 if (config && config['locale'] === 'fr') {
 	dico = dicofr;
 }
@@ -99,9 +101,6 @@ let rest: rm.RestClient = new rm.RestClient('rest-samples', undefined, undefined
 let commandDataProvider: VPLNodeProvider;
 var diagnosticCollection = vscode.languages.createDiagnosticCollection();
 let _channel: vscode.OutputChannel = vscode.window.createOutputChannel('VPL');
-let VPLChannel: vscode.StatusBarItem;
-let VPLChannelMessage: vscode.StatusBarItem;
-
 let currentFolder: (vscode.Uri | undefined);
 let VPLShell: vscode.Terminal;
 
@@ -113,16 +112,19 @@ function getOutputChannel(): vscode.OutputChannel {
 	return _channel;
 }
 
-function setCurrentFolder() {
-	var editor = vscode.window.activeTextEditor;
-	var uri;
-	if (editor) {
-		uri = editor.document.uri;
-		var folder: string = uri.fsPath;
-		if (uri.scheme === "file") {
-			folder = path.dirname(uri.fsPath);
+function setCurrentFolder(folder: vscode.Uri | undefined = undefined) {
+	if (folder) {
+		currentFolder = folder;
+	} else {
+		var editor = vscode.window.activeTextEditor;
+		var wfolder;
+		if (editor) {
+			wfolder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+			if (wfolder) {
+
+				currentFolder = wfolder.uri;
+			}
 		}
-		currentFolder = vscode.Uri.file(folder);
 	}
 }
 
@@ -137,6 +139,7 @@ function encodeHTML(str: string) {
 
 async function getAccessInfo() {
 	if (currentFolder) {
+		//RETRIEVE THE VPL ACCESS INFORMATION FROM THE CURRENT FOLDER AND RETURN IT
 		var conf = vscode.workspace.getConfiguration('', currentFolder);
 		var httpsAddress: (string | undefined) = conf.get('VPL4VSCode.httpsAddress');
 		var wsToken: (string | undefined) = conf.get('VPL4VSCode.wsToken');
@@ -146,31 +149,62 @@ async function getAccessInfo() {
 			return { "httpsAddress": httpsAddress, "wsToken": wsToken, "activityId": activityId, "httpsViewerAddress": httpsViewerAddress };
 		}
 	}
-	vscode.window.showErrorMessage(dico["global.error.configuration"]);
+	//vscode.window.showErrorMessage(dico["global.error.configuration"]);
 	return undefined;
 }
 
-async function setAccessInfo(text: string, folder: vscode.Uri) {
-	currentFolder = folder;
+async function setAccessInfo(text: string) {
+	if (currentFolder) {
+		/*if (!vscode.workspace.workspaceFolders||vscode.workspace.workspaceFolders.length===0) {
+			//TRICK TO HANDLE THE RESTART OF THE EXTENSION IF IT IS THE 
+			var content = "{\n";
+			content += '"files.exclude": {\n';
+			content += '	".vscode": true\n';
+			content += '},\n';
+			content += '"VPL4VSCode.httpsAddress": "' + text.split("&")[0] + '&",\n';
+			content += '"VPL4VSCode.wsToken": "' + text.split("&")[1].split("=")[1] + '",\n';
+			content += '"VPL4VSCode.activityId": ' + text.split("&")[2].split("=")[1] + ',\n';
+			content += '"VPL4VSCode.httpsViewerAddress": "' + text.split("?")[0].replace('webservice.php', 'view.php') + '?id=' + text.split("&")[2].split("=")[1] + '"\n}';
+			if (!fs.existsSync(currentFolder.fsPath + '/.vscode')) {
+				await fs.mkdirSync(currentFolder.fsPath + '/.vscode');
+			}
+			await fs.writeFileSync(currentFolder.fsPath + '/.vscode/settings.json', content, { encoding: 'utf8', flag: 'w' });
 
-	var conf = vscode.workspace.getConfiguration('', currentFolder);
-	await conf.update("files.exclude", { ".vscode": true }, vscode.ConfigurationTarget.WorkspaceFolder);
-	await conf.update('VPL4VSCode.httpsAddress', "https://moodle1.u-bordeaux.fr/mod/vpl/webservice.php?moodlewsrestformat=json&", vscode.ConfigurationTarget.WorkspaceFolder);
-	await conf.update('VPL4VSCode.wsToken', text.split("&")[1].split("=")[1], vscode.ConfigurationTarget.WorkspaceFolder);
-	await conf.update('VPL4VSCode.activityId', text.split("&")[2].split("=")[1], vscode.ConfigurationTarget.WorkspaceFolder);
-	await conf.update('VPL4VSCode.httpsViewerAddress', 'https://moodle1.u-bordeaux.fr/mod/vpl/view.php?id=' + text.split("&")[2].split("=")[1], vscode.ConfigurationTarget.WorkspaceFolder);
-	vscode.workspace.getConfiguration('').inspect('VPL4VSCode');
-	return { "httpsAddress": "https://moodle1.u-bordeaux.fr/mod/vpl/webservice.php?moodlewsrestformat=json&", "wsToken": text.split("&")[1].split("=")[1], "activityId": text.split("&")[2].split("=")[1] };
+		} else {*/
+		var conf = vscode.workspace.getConfiguration('', currentFolder);
+		await conf.update("files.exclude", { ".vscode": true }, vscode.ConfigurationTarget.WorkspaceFolder);
+		await conf.update('VPL4VSCode.httpsAddress', text.split("&")[0] + '&', vscode.ConfigurationTarget.WorkspaceFolder);
+		await conf.update('VPL4VSCode.wsToken', text.split("&")[1].split("=")[1], vscode.ConfigurationTarget.WorkspaceFolder);
+		await conf.update('VPL4VSCode.activityId', text.split("&")[2].split("=")[1], vscode.ConfigurationTarget.WorkspaceFolder);
+		await conf.update('VPL4VSCode.httpsViewerAddress', text.split("?")[0].replace('webservice.php', 'view.php') + '?id=' + text.split("&")[2].split("=")[1], vscode.ConfigurationTarget.WorkspaceFolder);
+		vscode.workspace.getConfiguration('').inspect('VPL4VSCode');
+		//}
+		return { "httpsAddress": text.split("&")[0] + '&', "wsToken": text.split("&")[1].split("=")[1], "activityId": text.split("&")[2].split("=")[1] };
+	}
+}
+
+
+async function openFolder(folder: vscode.Uri) {
+
+	var files: string[] = fs.readdirSync(folder.fsPath);
+	for (let file of files) {
+		if (file !== ".vscode") {
+			var elem = vscode.Uri.file(folder.fsPath + "/" + file);
+			await vscode.window.showTextDocument(elem, { preview: false });
+		}
+	}
 }
 
 async function setProjectFolder(url: string) {
+	await addDefaultWorkspace();
 	var folders = vscode.workspace.workspaceFolders;
-	var value, folder: vscode.Uri, infos = undefined;
+	var nbFolders = 0;
 
+	var value, folder: vscode.Uri, infos = undefined;
 	if (folders && folders.length > 0) {
+		nbFolders = folders.length;
 		value = await vscode.window.showQuickPick([dico["setProjectFolder.current"], dico["setProjectFolder.choice"]], { placeHolder: dico["setProjectFolder.dest"] });
 	} else {
-
 		value = dico["setProjectFolder.choice"];
 	}
 	if (value === undefined) {
@@ -187,78 +221,58 @@ async function setProjectFolder(url: string) {
 		const f = await vscode.window.showOpenDialog(options);
 		if (f) {
 			folder = f[0];
-			vscode.workspace.onDidChangeWorkspaceFolders(e => {
-				wfolder = vscode.workspace.getWorkspaceFolder(folder);
-				if (wfolder) {
-					setAccessInfo(url, wfolder.uri).then(infos => {
-						getOriginalFiles(false, infos);
-					});
-
+			vscode.workspace.onDidChangeWorkspaceFolders(async e => {
+				for (const added of e.added) {
+					setCurrentFolder(folder);
+					await getOriginalFiles(false, await setAccessInfo(url));
+					await openFolder(added.uri);
 				}
 			});
-			await vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0, 0, { uri: folder });
-
+			vscode.workspace.updateWorkspaceFolders(nbFolders, 0, { uri: folder });
 		}
 	} else {
 		wfolder = await vscode.window.showWorkspaceFolderPick();
 		if (wfolder) {
-			infos = await setAccessInfo(url, wfolder.uri);
-			getOriginalFiles(false, infos);
+			setCurrentFolder(wfolder.uri);
+			await getOriginalFiles(false, await setAccessInfo(url));
+			await openFolder(wfolder.uri);
 		}
-		/*if (f) {
-			await vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0, 0, { uri: f.uri });
-			folder = f.uri;
-			infos = await setAccessInfo(url, folder);
-			getOriginalFiles(false, infos);
-			//await vscode.workspace.updateWorkspaceFolders(vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0, 0, { uri: f.uri });
-		}*/
 	}
+
 
 }
 
 
 async function getFilesInfo(wsfunction: string, infos: any = undefined) {
-	try {
-		if (infos === undefined) {
-			infos = await getAccessInfo();
-		}
-		if (infos) {
-			let res: rm.IRestResponse<BRaw> = await rest.get<BRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=" + wsfunction);
-			if (res.result) {
-				if (res.result.intro) {
-					if (currentFolder) {
-
+	await addDefaultWorkspace();
+	if (currentFolder) {
+		try {
+			if (infos === undefined) {
+				infos = await getAccessInfo();
+			}
+			if (infos) {
+				let res: rm.IRestResponse<BRaw> = await rest.get<BRaw>(infos.httpsAddress + "wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=" + wsfunction);
+				if (res.result) {
+					if (res.result.intro) {
 						await vscode.workspace.getConfiguration('', currentFolder).update('VPL4VSCode.intro', res.result.intro, vscode.ConfigurationTarget.WorkspaceFolder);
 					}
-				}
-				if (res.result.reqfiles) {
-					return res.result.reqfiles;
-				}
-				if (res.result.files) {
-					return res.result.files;
-				}
-				if (res.result.errorcode) {
-					//var t = vscode.window.showErrorMessage(dico["global.error.reachability"] + " " + res.result.message, dico["global.reconnect"]);
-					commandDataProvider.refresh(2);
-					commandDataProvider.setLog(dico["extension.vpl.renew_token"], dico["global.error.reachability"] + " " + res.result.message);
-					/*t.then((value) => {
-						if (!value) {
-							return;
-						}
-						vscode.commands.executeCommand('vscode.open', vscode.Uri.parse(infos.httpsViewerAddress));
-						return;
-					}, () => vscode.window.showErrorMessage(dico["global.error.resetting"] + ' ${err}'));*/
-
+					if (res.result.reqfiles) {
+						return res.result.reqfiles;
+					}
+					if (res.result.files) {
+						return res.result.files;
+					}
+					if (res.result.errorcode) {
+						commandDataProvider.refresh(2);
+						commandDataProvider.setLog(dico["extension.vpl.renew_token"], dico["global.error.reachability"] + " " + res.result.message);
+					}
 				}
 			}
-
+		} catch (err) {
+			vscode.window.showErrorMessage(dico["global.error.reachability"] + " " + dico["global.error.connectivity"]);
+			commandDataProvider.refresh(2);
 		}
-	} catch (err) {
-		vscode.window.showErrorMessage(dico["global.error.reachability"] + " " + dico["global.error.connectivity"]);
-		commandDataProvider.refresh(2);
 	}
-
-	return;
 }
 
 async function getOriginalFilesInfo(infos: any = undefined) {
@@ -390,7 +404,7 @@ async function display() {
 					getOutputChannel().appendLine("Evaluation:\n" + res.result.evaluation);
 					getOutputChannel().show(true);
 				}
-				commandDataProvider.setDescription(dico["extension.vpl.evaluate"], '' + res.result.grade);
+				commandDataProvider.setDescription(dico["extension.vpl.evaluate"], '' + res.result.grade, true);
 			}
 		} catch (err) {
 			vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
@@ -400,14 +414,14 @@ async function display() {
 }
 
 async function getOriginalFiles(user: boolean = false, infos: any = undefined) {
-	let files: (VPLFile[] | undefined);
-	if (user) {
-		files = await getUserCurrentFilesInfo(infos);
-	} else {
-		files = await getOriginalFilesInfo(infos);
-	}
-	if (files) {
-		if (currentFolder) {
+	if (currentFolder) {
+		let files: (VPLFile[] | undefined);
+		if (user) {
+			files = await getUserCurrentFilesInfo(infos);
+		} else {
+			files = await getOriginalFilesInfo(infos);
+		}
+		if (files) {
 			writeFiles(currentFolder, files);
 			vscode.window.showTextDocument(vscode.Uri.file(currentFolder.fsPath + '/' + files[0].name));
 		}
@@ -432,6 +446,7 @@ function readFiles(folder: vscode.Uri, files: VPLFile[]) {
 }
 
 async function saveUserFiles() {
+	await addDefaultWorkspace();
 	var infos = await getAccessInfo();
 	if (infos) {
 		let files: (VPLFile[] | undefined) = await getOriginalFilesInfo();
@@ -451,7 +466,6 @@ async function saveUserFiles() {
 							}
 						}
 						if (checkFilesAreCorrectlySaved(folder)) {
-							//VPLChannelMessage.text = "[ $(save) VPL - " + dico["saveUserFiles.filesaved"] + " ]";
 							commandDataProvider.setDescription(dico["extension.vpl.save"], dico["saveUserFiles.filesaved"]);
 							setTimeout(() => {
 								commandDataProvider.setDescription(dico["extension.vpl.save"], '');
@@ -471,7 +485,7 @@ async function saveUserFiles() {
 
 
 async function evaluateUserFiles() {
-	commandDataProvider.setDescription(dico["extension.vpl.evaluate"], dico["global.ws.processing"]);
+	await addDefaultWorkspace();
 	let done: boolean = await saveUserFiles();
 	if (done) {
 
@@ -513,43 +527,6 @@ async function evaluateUserFiles() {
 							});
 						});
 					}
-					/*
-					await vscode.window.withProgress({
-						location: vscode.ProgressLocation.Notification,
-						title: "Processing ...",
-						cancellable: true
-					}, async (progress, ctoken) => {
-						ctoken.onCancellationRequested(() => {
-						});
-						if (res.result) {
-							return new Promise((resolve) => {
-								const WebSocket = require('ws');
-								if (res.result === null) {
-									resolve();
-									return;
-								}
-								var URL = res.result.monitorURL;
-								const ws = new WebSocket(URL);
-								ws.on('error', function incoming() {
-									vscode.window.showErrorMessage(dico["global.ws.reachability"] + URL);
-								});
-								ws.on('close', function open() {
-									resolve();
-								});
-								ws.on('open', function open() {
-									progress.report({ message: dico["global.ws.connecting"] });
-								});
-								ws.on('message', function incoming(data: string) {
-									progress.report({ message: data });
-									if (data === "retrieve:") {
-										display();
-										progress.report({ increment: 100, message: dico["global.ws.done"] });
-										resolve();
-									}
-								});
-							});
-						}
-					});*/
 
 				} else {
 					vscode.window.showErrorMessage(dico["global.ws.evaluation.error"]);
@@ -560,10 +537,12 @@ async function evaluateUserFiles() {
 			}
 		}
 	}
+
 }
 
 
 async function runUserFiles(debug = false) {
+	await addDefaultWorkspace();
 	let done: boolean = await saveUserFiles();
 	if (done) {
 		var infos = await getAccessInfo();
@@ -624,8 +603,6 @@ async function runUserFiles(debug = false) {
 									}
 									if (data === "run:terminal") {
 										const wse = new WebSocket(URLe);
-
-
 										let writeEmitter = new vscode.EventEmitter<string>();
 										let pty: any = {
 											onDidWrite: writeEmitter.event,
@@ -675,16 +652,84 @@ async function runUserFiles(debug = false) {
 	}
 }
 
+async function addDefaultWorkspace() {
+	if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+		vscode.workspace.updateWorkspaceFolders(0, 0, { uri: faqFolder });
+	}
+}
 
+async function openFAQ() {
+	await addDefaultWorkspace();
+	vscode.commands.executeCommand("markdown.showPreview", faq);
+}
 
 export async function activate(context: vscode.ExtensionContext) {
+	faqFolder = vscode.Uri.file(context.extensionPath + '/resources/faq');
+	faq = vscode.Uri.file(context.extensionPath + '/resources/faq/README.md');
+	if (!vscode.workspace.workspaceFolders || vscode.workspace.workspaceFolders.length === 0) {
+		//Adding default workspace to avoid problems
+		await addDefaultWorkspace();
+		return;
+	}
 
+
+	context.subscriptions.push(vscode.window.registerUriHandler({
+		//vscode://GuillaumeBlin.vpl4vscode/open?https://moodle1.u-bordeaux.fr/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=d43777a617622a37e8f5dbfe86b5d0a1&id=173773&wsfunction=
+		async handleUri(uri: vscode.Uri) {
+			await addDefaultWorkspace();
+			const { path, query } = uri;
+			if (path === "/open") {
+				vscode.commands.executeCommand("workbench.view.extension.vpl-bdx");
+				if ((query.indexOf("wstoken") > -1) && (query.indexOf("id") > -1)) {
+					//detect if id is the current activity id to renew token or open new activity otherwise
+					var id = query.split("&")[2].split("=")[1];
+					if (vscode.workspace.workspaceFolders) {
+						const savedCurrentFolder = currentFolder;
+						for (const e of vscode.workspace.workspaceFolders) {
+							await setCurrentFolder(e.uri);
+							var infos = await getAccessInfo();
+							if (infos && "" + infos.activityId === id) {
+								openFolder(e.uri);
+								vscode.commands.executeCommand("extension.vpl_renewtoken", query, e.uri);
+								return;
+							}
+						}
+						currentFolder = savedCurrentFolder;
+					}
+					vscode.commands.executeCommand("extension.vpl_open", query);
+				}
+			}
+		}
+	}));
 	vscode.commands.registerCommand('fileExplorer.openFile', (resource) => vscode.window.showTextDocument(resource));
+	vscode.commands.registerCommand('extension.vpl_faq', () => openFAQ());
 
 	const treeDataProvider = new FileSystemProvider(undefined);
 	commandDataProvider = new VPLNodeProvider(context);
+	/*	commandDataProvider.setDescription(dico["extension.vpl.open"], '');
+		if ((vscode.workspace.workspaceFolders ? vscode.workspace.workspaceFolders.length : 0) === 1) {
+			if (vscode.workspace.workspaceFolders) {
+				const added = vscode.workspace.workspaceFolders[0];
+				currentFolder = added.uri;
+				var files: string[] = fs.readdirSync(added.uri.fsPath);
+				if (files.length === 1 && files[0] === ".vscode") {
+					await getOriginalFiles();
+				}
+				files = fs.readdirSync(added.uri.fsPath);
+				for (let file of files) {
+					if (file !== ".vscode") {
+						var elem = vscode.Uri.file(added.uri.fsPath + "/" + file);
+						vscode.window.showTextDocument(elem, { preview: false });
+						//return;
+					}
+				}
+	
+	
+			}
+	
+		}*/
 
-	vscode.window.onDidChangeActiveTextEditor((textEditor) => {
+	vscode.window.onDidChangeActiveTextEditor(async (textEditor) => {
 		if (!textEditor) {
 			return;
 		}
@@ -694,123 +739,202 @@ export async function activate(context: vscode.ExtensionContext) {
 			var conf = vscode.workspace.getConfiguration('', worksp.uri);
 			if (conf.get("VPL4VSCode.wsToken", vscode.ConfigurationTarget.WorkspaceFolder)) {
 				currentFolder = worksp.uri;
-				getAccessInfo().then(infos => {
-					getOriginalFilesInfo(infos).then(tokenValid => {
-						if (tokenValid) {
-							commandDataProvider.refresh(1);
-						} else {
-							commandDataProvider.refresh(2);
-						}
-					}, err => {
-						var t = err;
-					});
-
-				}, err => {
-					var t = err;
-				});
+				var infos = await getAccessInfo();
+				var tokenValid = await getOriginalFilesInfo(infos);
+				if (tokenValid) {
+					commandDataProvider.refresh(1);
+				} else {
+					commandDataProvider.refresh(2);
+				}
 			} else {
 				commandDataProvider.refresh();
 			}
 		}
 	});
-	vscode.window.registerTreeDataProvider("vpl-commands", commandDataProvider);
 
+	vscode.window.registerTreeDataProvider("vpl-commands", commandDataProvider);
 	vscode.window.createTreeView("vpl-explorer", { treeDataProvider });
 
 	let disposable = vscode.commands.registerCommand('extension.vpl_show_description', async () => {
-		var content: string = vscode.workspace.getConfiguration('', currentFolder).get('VPL4VSCode.intro') || '';
-		var regex = /.*/;
-		if (config) {
-			if (config['locale'] === "fr") {
-				regex = /{\s*mlang\s+\b(?!fr\b)\w+\s*}(.*?){\s*mlang\s*}/gis;
-			}
-			if (config['locale'] === "en") {
-				regex = /{\s*mlang\s+\b(?!en\b)\w+\s*}(.*?){\s*mlang\s*}/gis;
-			}
-			VPLPanel.createOrShow(context.extensionPath, content.replace(regex, "").replace(/{\s*mlang\s*\w*\s*}/gis, ""));
-		}
-
-	});
-
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerCommand('extension.vpl_open', async () => {
-		let url = await vscode.env.clipboard.readText();
-		if (url.indexOf("wstoken") > -1) {
-			await setProjectFolder(url);
-
-		} else {
-			vscode.window.showErrorMessage(dico["extension.vpl_open.error"]);
-		}
-	});
-
-	context.subscriptions.push(disposable);
-
-	disposable = vscode.commands.registerCommand('extension.vpl_renewtoken', async () => {
-		let url = await vscode.env.clipboard.readText();
-		if (url.indexOf("wstoken") > -1) {
-			commandDataProvider.refresh(3);
-			var editor = vscode.window.activeTextEditor;
-			var uri;
-			if (editor) {
-				uri = editor.document.uri;
-				var folder: string = uri.fsPath;
-				if (uri.scheme === "file") {
-					folder = path.dirname(uri.fsPath);
+		await addDefaultWorkspace();
+		if (currentFolder) {
+			var content: string = vscode.workspace.getConfiguration('', currentFolder).get('VPL4VSCode.intro') || '';
+			var regex = /.*/;
+			if (config) {
+				if (config['locale'] === "fr") {
+					regex = /{\s*mlang\s+\b(?!fr\b)\w+\s*}(.*?){\s*mlang\s*}/gis;
 				}
-				await setAccessInfo(url, vscode.Uri.file(folder));
-				commandDataProvider.setDescription(dico["extension.vpl.renew_token"], dico["extension.vpl_renewtoken.info"]);
-				setTimeout(() => {
-					commandDataProvider.setDescription(dico["extension.vpl.renew_token"], '');
-					commandDataProvider.refresh(1);
-				}, 2000);
+				if (config['locale'] === "en") {
+					regex = /{\s*mlang\s+\b(?!en\b)\w+\s*}(.*?){\s*mlang\s*}/gis;
+				}
+				VPLPanel.createOrShow(context.extensionPath, content.replace(regex, "").replace(/{\s*mlang\s*\w*\s*}/gis, ""));
 			}
-		} else {
-			vscode.window.showErrorMessage(dico["extension.vpl_open.error"]);
+		}
+
+	});
+
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('extension.vpl_open', async (url: string = '') => {
+		try {
+			commandDataProvider.setDescription(dico["extension.vpl.open"], dico["global.ws.processing"]);
+			await addDefaultWorkspace();
+			var folders = vscode.workspace.workspaceFolders;
+			var nbFolders = 0;
+			if (folders) {
+				nbFolders = folders.length;
+			}
+			if (url === '') {
+				url = await vscode.env.clipboard.readText();
+			}
+			if (url.indexOf("wstoken") > -1) {
+				await setProjectFolder(url);
+
+			} else {//Opening an already configured project
+				var res = vscode.window.showWarningMessage(dico["extension.vpl_open.error"] + '\n' + dico["extension.open.choice"], dico["global.yes"], dico["global.no"]);
+				res.then((value) => {
+					if (!value || value !== dico["global.yes"]) {
+						return;
+					}
+
+					const options: vscode.OpenDialogOptions = {
+						canSelectMany: false,
+						openLabel: 'Open',
+						canSelectFolders: true,
+						canSelectFiles: false
+					};
+					vscode.workspace.onDidChangeWorkspaceFolders(e => {
+						for (const added of e.added) {
+							setCurrentFolder(added.uri);
+							openFolder(added.uri);
+						}
+					});
+					vscode.window.showOpenDialog(options).then(f => {
+						if (f) {
+							var folder: vscode.Uri = f[0];
+							const selected = vscode.workspace.getWorkspaceFolder(folder);
+							if (selected) { //already an open workspace
+								setCurrentFolder(selected.uri);
+								openFolder(selected.uri);
+							} else {
+								vscode.workspace.updateWorkspaceFolders(nbFolders, 0, { uri: folder });
+							}
+						}
+					});
+
+					return;
+				}, () => vscode.window.showErrorMessage(dico["global.error.resetting"] + ' ${err}'));
+			}
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.open"], '');
+		}
+	});
+
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('extension.vpl_renewtoken', async (url: string = '', uri: vscode.Uri | undefined = undefined) => {
+		try {
+			await addDefaultWorkspace();
+			commandDataProvider.setDescription(dico["extension.vpl.renew_token"], dico["global.ws.processing"]);
+			if (url === '') {
+				url = await vscode.env.clipboard.readText();
+			}
+			if (url.indexOf("wstoken") > -1) {
+				commandDataProvider.refresh(3);
+				var editor = vscode.window.activeTextEditor;
+				var folder: string;
+				if (!uri && editor) {
+					uri = editor.document.uri;
+					folder = uri.fsPath;
+					if (uri.scheme === "file") {
+						folder = path.dirname(uri.fsPath);
+					}
+				} else {
+					if (uri) {
+						folder = uri.fsPath;
+					} else {
+						vscode.window.showErrorMessage(dico["extension.vpl_open.error"]);
+						return;
+					}
+				}
+				if (uri) {
+					setCurrentFolder(vscode.Uri.file(folder));
+					await setAccessInfo(url);
+					commandDataProvider.setDescription(dico["extension.vpl.renew_token"], dico["extension.vpl_renewtoken.info"]);
+					setTimeout(() => {
+						commandDataProvider.setDescription(dico["extension.vpl.renew_token"], '');
+						commandDataProvider.refresh(1);
+					}, 2000);
+				}
+
+			} else {
+				vscode.window.showErrorMessage(dico["extension.vpl_open.error"]);
+			}
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.renew_token"], '');
 		}
 	});
 
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('extension.vpl_load', async () => {
-		setCurrentFolder();
-		await getUserCurrentFiles();
+		try {
+			await addDefaultWorkspace();
+			commandDataProvider.setDescription(dico["extension.vpl.load"], dico["global.ws.processing"]);
+			setCurrentFolder();
+			await getUserCurrentFiles();
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.load"], '');
+		}
 	});
 
 	context.subscriptions.push(disposable);
 
 
 	disposable = vscode.commands.registerCommand('extension.vpl_reset', async () => {
+
 		var res = vscode.window.showWarningMessage(dico["extension.vpl_reset.warning"], dico["global.yes"], dico["global.no"]);
 		res.then((value) => {
-			if (!value || value !== dico["global.yes"]) {
-				return;
-			}
-			setCurrentFolder();
-			if (currentFolder) {
-				fs.readdir(currentFolder.fsPath, (err, files) => {
-					if (err) { throw err; }
+			try {
+				addDefaultWorkspace();
+				commandDataProvider.setDescription(dico["extension.vpl.reset_files"], dico["global.ws.processing"]);
 
-					for (const file of files) {
-						if (currentFolder && file !== ".vscode") {
-							fs.unlinkSync(path.join(currentFolder.fsPath, file));
+				if (!value || value !== dico["global.yes"]) {
+					return;
+				}
+				setCurrentFolder();
+				if (currentFolder) {
+					fs.readdir(currentFolder.fsPath, (err, files) => {
+						if (err) { throw err; }
+
+						for (const file of files) {
+							if (currentFolder && file !== ".vscode") {
+								fs.unlinkSync(path.join(currentFolder.fsPath, file));
+							}
 						}
-					}
-				});
+					});
+				}
+				treeDataProvider.refresh();
+				getOriginalFiles();
+				treeDataProvider.refresh();
+				return;
+			} finally {
+				commandDataProvider.setDescription(dico["extension.vpl.reset_files"], '');
 			}
-			treeDataProvider.refresh();
-			getOriginalFiles();
-			treeDataProvider.refresh();
-			return;
 		}, () => vscode.window.showErrorMessage(dico["global.error.resetting"] + ' ${err}'));
+
 	});
 
 	context.subscriptions.push(disposable);
 	disposable = vscode.commands.registerCommand('extension.vpl_save', async () => {
-		VPLChannelMessage.show();
-		setCurrentFolder();
-		saveUserFiles();
-
+		try {
+			await addDefaultWorkspace();
+			commandDataProvider.setDescription(dico["extension.vpl.save"], dico["global.ws.processing"]);
+			setCurrentFolder();
+			await saveUserFiles();
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.save"], '');
+		}
 	});
 
 	context.subscriptions.push(disposable);
@@ -828,49 +952,45 @@ export async function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('extension.vpl_evaluate', async () => {
-		VPLChannel.show();
-		setCurrentFolder();
-		evaluateUserFiles();
+		try {
+			await addDefaultWorkspace();
+			commandDataProvider.setDescription(dico["extension.vpl.evaluate"], dico["global.ws.processing"]);
+			setCurrentFolder();
+			await evaluateUserFiles();
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.evaluate"], '');
+		}
 	});
 
 	context.subscriptions.push(disposable);
 	disposable = vscode.commands.registerCommand('extension.vpl_run', async () => {
-		//VPLChannelMessage.show();
-		setCurrentFolder();
-		runUserFiles();
+		try {
+			await addDefaultWorkspace();
+			commandDataProvider.setDescription(dico["extension.vpl.run"], dico["global.ws.processing"]);
+			setCurrentFolder();
+			await runUserFiles();
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.run"], '');
+		}
 
 	});
 
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('extension.vpl_debug', async () => {
-		VPLChannelMessage.show();
-		setCurrentFolder();
-		runUserFiles(true);
+		try {
+			await addDefaultWorkspace();
+			commandDataProvider.setDescription(dico["extension.vpl.debug"], dico["global.ws.processing"]);
+			setCurrentFolder();
+			await runUserFiles(true);
+		} finally {
+			commandDataProvider.setDescription(dico["extension.vpl.debug"], '');
+		}
 	});
 
 	context.subscriptions.push(disposable);
 
-	const myCommandId = 'vpl.seelog';
-	context.subscriptions.push(vscode.commands.registerCommand(myCommandId, () => {
-		_channel.show(true);
-	}));
 
-	VPLChannel = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-	VPLChannel.command = myCommandId;
-
-	context.subscriptions.push(VPLChannel);
-	VPLChannel.text = '[ $(preview) VPL ]';
-	VPLChannel.color = 'black';
-	VPLChannel.tooltip = dico["global.output.channel"];
-
-	VPLChannelMessage = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-	context.subscriptions.push(VPLChannelMessage);
-	VPLChannelMessage.text = '[ $(note) VPL ]';
-	VPLChannelMessage.color = '#FFF500';
-	VPLChannelMessage.tooltip = dico["global.output.message"];
-	/*var t = vscode.window.createTerminal({ name: 'Command', cwd: extensionPath });
-	t.sendText("npm start");*/
 	vscode.workspace.getConfiguration('liveServer.settings').update("port", 33400, false);
 	let ext = vscode.extensions.getExtension("GuillaumeBlin.vpl4vscode");
 
@@ -888,22 +1008,38 @@ export function deactivate() { }
 class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 	data: TreeItem[];
 	menus: TreeItem[][];
+	state: number = 0;
 	private _onDidChangeTreeData: vscode.EventEmitter<any> = new vscode.EventEmitter<any>();
 	readonly onDidChangeTreeData: vscode.Event<any> = this._onDidChangeTreeData.event;
 
 
 	constructor(private context: vscode.ExtensionContext) {
-		this.data = [new TreeItem(this.context, 'Open', {
+		this.data = [new TreeItem(this.context, dico["extension.vpl.faq"], {
+			command: 'extension.vpl_faq',
+			arguments: [this.context],
+			title: ''
+		}, 'hands-helping-solid'),
+		new TreeItem(this.context, dico["extension.vpl.open"], {
 			command: 'extension.vpl_open',
 			title: ''
 		}, 'paperclip-solid')];
 		this.menus = [[
+			new TreeItem(this.context, dico["extension.vpl.faq"], {
+				command: 'extension.vpl_faq',
+				arguments: [this.context],
+				title: ''
+			}, 'hands-helping-solid'),
 			new TreeItem(this.context, dico["extension.vpl.open"], {
 				command: 'extension.vpl_open',
 				title: ''
 			}, 'paperclip-solid')
 		],
 		[
+			new TreeItem(this.context, dico["extension.vpl.faq"], {
+				command: 'extension.vpl_faq',
+				arguments: [this.context],
+				title: ''
+			}, 'hands-helping-solid'),
 			new TreeItem(this.context, dico["extension.vpl.open"], {
 				command: 'extension.vpl_open',
 				title: ''
@@ -918,6 +1054,9 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 			}, 'rocket-solid', [new TreeItem(this.context, dico["extension.vpl.show_output"], {
 				command: 'extension.vpl_show_output',
 				title: ''
+			}, 'eye-solid'), new TreeItem(this.context, dico["extension.vpl.show_problems"], {
+				command: 'workbench.action.problems.focus',
+				title: ''
 			}, 'eye-solid')]),
 			new TreeItem(this.context, dico["extension.vpl.debug"], {
 				command: 'extension.vpl_debug',
@@ -925,12 +1064,18 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 			}, 'bug-solid', [new TreeItem(this.context, dico["extension.vpl.show_output"], {
 				command: 'extension.vpl_show_output',
 				title: ''
+			}, 'eye-solid'), new TreeItem(this.context, dico["extension.vpl.show_problems"], {
+				command: 'workbench.action.problems.focus',
+				title: ''
 			}, 'eye-solid')]),
 			new TreeItem(this.context, dico["extension.vpl.evaluate"], {
 				command: 'extension.vpl_evaluate',
 				title: ''
 			}, 'check-square-solid', [new TreeItem(this.context, dico["extension.vpl.show_report"], {
 				command: 'extension.vpl_show_report',
+				title: ''
+			}, 'eye-solid'), new TreeItem(this.context, dico["extension.vpl.show_problems"], {
+				command: 'workbench.action.problems.focus',
 				title: ''
 			}, 'eye-solid')]),
 			new TreeItem(this.context, dico["extension.vpl.reset_files"], {
@@ -947,6 +1092,11 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 			}, 'upload-solid')
 		],
 		[
+			new TreeItem(this.context, dico["extension.vpl.faq"], {
+				command: 'extension.vpl_faq',
+				arguments: [this.context],
+				title: ''
+			}, 'hands-helping-solid'),
 			new TreeItem(this.context, dico["extension.vpl.open"], {
 				command: 'extension.vpl_open',
 				title: ''
@@ -965,6 +1115,11 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 			)
 		],
 		[
+			new TreeItem(this.context, dico["extension.vpl.faq"], {
+				command: 'extension.vpl_faq',
+				arguments: [this.context],
+				title: ''
+			}, 'hands-helping-solid'),
 			new TreeItem(this.context, dico["extension.vpl.open"], {
 				command: 'extension.vpl_open',
 				title: ''
@@ -978,15 +1133,25 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 		];
 	}
 
-	setDescription(element: string, description: string) {
+	setDescription(element: string, description: string, reseticon: boolean = false) {
 		this.data.forEach(e => {
 			if (e.label === element) {
+				if (reseticon || description === '') {
+					e.resetIconPath();
+				} else {
+					if (!e.waiting) {
+						e.setWaitingIcon();
+					}
+
+				}
 				e.description = description;
 			}
 		}
 		);
 		this._onDidChangeTreeData.fire();
 	}
+
+
 
 	setLog(element: string, log: string) {
 
@@ -1011,6 +1176,7 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 	}
 
 	refresh(state: number = 0) {
+		this.state = state;
 		this.data = this.menus[state];
 		if (state === 2) {
 			var uri: string = vscode.workspace.getConfiguration('', currentFolder).get('VPL4VSCode.httpsViewerAddress') || '';
@@ -1032,10 +1198,12 @@ class VPLNodeProvider implements vscode.TreeDataProvider<TreeItem> {
 
 class TreeItem extends vscode.TreeItem {
 	children: TreeItem[] = [];
+	icon: string = '';
+	waiting: boolean = false;
 	constructor(private context: vscode.ExtensionContext, label: string, command: vscode.Command, icon: string, child: TreeItem[] | undefined = undefined) {
 		super(
 			label, (child ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None));
-		//this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+		this.icon = icon;
 		this.command = command;
 		this.iconPath = {
 			dark: this.context.asAbsolutePath(path.join('resources', icon + '-dark.svg')),
@@ -1046,17 +1214,29 @@ class TreeItem extends vscode.TreeItem {
 		}
 
 	}
+
+	setWaitingIcon() {
+		this.iconPath = {
+			dark: this.context.asAbsolutePath(path.join('resources', 'spinner-solid.gif')),
+			light: this.context.asAbsolutePath(path.join('resources', 'spinner-solid.gif'))
+		};
+		this.waiting = true;
+	}
+
+	resetIconPath() {
+		this.waiting = false;
+		this.iconPath = {
+			dark: this.context.asAbsolutePath(path.join('resources', this.icon + '-dark.svg')),
+			light: this.context.asAbsolutePath(path.join('resources', this.icon + '-light.svg'))
+		};
+	}
+
 	getChildren() {
 		return this.children;
 	}
 }
 
 
-const cats = {
-	'Coding Cat': 'https://media.giphy.com/media/JIX9t2j0ZTN9S/giphy.gif',
-	'Compiling Cat': 'https://media.giphy.com/media/mlvseq9yvZhba/giphy.gif',
-	'Testing Cat': 'https://media.giphy.com/media/3oriO0OEd9QIDdllqo/giphy.gif'
-};
 
 
 /**
@@ -1071,7 +1251,6 @@ class VPLPanel {
 	public static readonly viewType = 'VPL';
 
 	private readonly _panel: vscode.WebviewPanel;
-	private readonly _extensionPath: string;
 	private _disposables: vscode.Disposable[] = [];
 
 	public static createOrShow(extensionPath: string, content: string = '') {
@@ -1110,7 +1289,6 @@ class VPLPanel {
 
 	private constructor(panel: vscode.WebviewPanel, extensionPath: string) {
 		this._panel = panel;
-		this._extensionPath = extensionPath;
 
 		// Set the webview's initial html content
 		this._update('');
