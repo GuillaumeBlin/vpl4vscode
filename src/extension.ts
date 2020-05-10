@@ -223,7 +223,7 @@ async function setProjectFolder(url: string) {
 			folder = f[0];
 			vscode.workspace.onDidChangeWorkspaceFolders(async e => {
 				for (const added of e.added) {
-					setCurrentFolder(folder);
+					setCurrentFolder(added.uri);
 					await getOriginalFiles(false, await setAccessInfo(url));
 					await openFolder(added.uri);
 				}
