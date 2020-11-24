@@ -49,19 +49,18 @@
 		"configuration": {
 			"title": "VPL4VSCode",
 			"properties": {
-				"VPL4VSCode.httpsViewerAddress": {
+				"VPL4VSCode.moodleAddress": {
 					"type": "string",
 					"scope": "resource",
 					"format": "uri",
 					"default": null,
 					"description": "%extension.httpsAddress.description%"
 				},
-				"VPL4VSCode.httpsAddress": {
-					"type": "string",
+				"VPL4VSCode.activityId": {
+					"type": "number",
 					"scope": "resource",
-					"format": "uri",
 					"default": null,
-					"description": "%extension.httpsAddress.description%"
+					"description": "%extension.activityId.description%"
 				},
 				"VPL4VSCode.wsToken": {
 					"type": "string",
@@ -69,11 +68,11 @@
 					"default": null,
 					"description": "%extension.wsToken.description%"
 				},
-				"VPL4VSCode.activityId": {
-					"type": "number",
+				"VPL4VSCode.moodleCookies": {
+					"type": "string",
 					"scope": "resource",
 					"default": null,
-					"description": "%extension.activityId.description%"
+					"description": "%extension.moodleCookies.description%"
 				},
 				"VPL4VSCode.intro": {
 					"type": "string",
@@ -144,18 +143,26 @@
 		"@types/mkdirp": "^0.5.2",
 		"@types/mocha": "^2.2.42",
 		"@types/node": "^10.17.12",
+		"@types/puppeteer": "^5.4.0",
 		"tslint": "^5.12.1",
 		"typescript": "^3.3.1",
 		"vscode": "^1.1.28"
 	},
 	"dependencies": {
+		"@types/novnc-core": "0.1.2",
+		"@types/node-fetch": "^2.5.7",
 		"@types/socket.io": "^2.1.2",
 		"@types/socket.io-client": "^1.4.32",
 		"@types/ws": "^6.0.1",
 		"fs-extra": "^8.1.0",
 		"gulp": "^4.0.2",
+		"zhhlwd.openthewebpage":"0.0.1",
+		"live-server": "^1.2.1",
 		"moodle-client-2": "^0.2.1",
 		"moodle-rest-client": "^0.1.0",
+		"node-fetch": "2.6.1",
+		"oauth": "^0.9.15",
+		"puppeteer": "^5.4.1",
 		"socket.io": "^2.2.0",
 		"typed-rest-client": "^1.2.0",
 		"vsce": "^1.66.0",

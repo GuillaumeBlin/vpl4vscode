@@ -37,7 +37,9 @@
 	"global.reconnect": "Open moodle",
 	"runUserFiles.io": "VPL Shell handling io of your program",
 	"saveUserFiles.filesaved": "Save to moodle done",
-	"extension.open.choice": "Do you want to select an already confgured VPL directory.",
+	"extension.open.choice": "Select/Create a configuration.",
+	"extension.open.existing": "Do you want to select an already configured VPL directory?",
+	"extension.open.new": "Do you want to create a new configured VPL directory?",
 	"setProjectFolder.choice": "Select/Create a directory.",
 	"setProjectFolder.current": "Use one of the current opened workspace folders",
 	"setProjectFolder.dest": "Select the destination directory."

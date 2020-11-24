@@ -1,4 +1,5 @@
 {
+	"extension.moodleCookies.description": "Spécifie les cookies utilisés par le serveur moodle.",
 	"extension.httpsAddress.description": "Spécifie l'adresse du serveur moodle à utiliser.",
 	"extension.wsToken.description": "Spécifie le jeton d'accès du webservice moodle pour l'utilisateur.",
 	"extension.activityId.description": "Spécifie l'identifiant de l'activité VPL.",
