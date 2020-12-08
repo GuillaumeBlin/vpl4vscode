@@ -2,7 +2,7 @@
 
 The vpl4vscode extension allows to interact with VPL moodle's webservice directly from VSCode.
 
-# modification on Moodle VPL plugin
+## Modification on Moodle VPL plugin
 
 In [externallib.php](https://github.com/jcrodriguez-dis/moodle-mod_vpl/blob/v3.3.8/externallib.php), add the following code to the end of file in order to allow run and debug as VPL webservices
 
