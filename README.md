@@ -111,7 +111,7 @@ by
 ```php
 if (vpl_get_webservice_available()) {
     $service_url = vpl_get_webservice_urlbase($vpl);
-    echo '<a href="vscode://GuillaumeBlin.vpl4vscode/open?’.$service_url.’" class="btn btn-primary">Import in VS Code</a>'
+    echo '<a href="vscode://GuillaumeBlin.vpl4vscode/open?’.$service_url.’" class="btn btn-primary">Import in VS Code</a>';
 
 }
 ```
