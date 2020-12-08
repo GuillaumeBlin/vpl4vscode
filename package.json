@@ -20,8 +20,7 @@
 		"onCommand:extension.vpl_save",
 		"onCommand:extension.vpl_evaluate",
 		"onCommand:extension.vpl_run",
-		"onCommand:extension.vpl_debug",
-		"onCommand:extension.vpl_renewtoken"
+		"onCommand:extension.vpl_debug"
 	],
 	"main": "./out/extension.js",
 	"contributes": {
@@ -98,10 +97,6 @@
 			{
 				"command": "extension.vpl_show_report",
 				"title": "truc"
-			},
-			{
-				"command": "extension.vpl_renewtoken",
-				"title": "%extension.vpl_renewtoken.title%"
 			},
 			{
 				"command": "extension.vpl_open",

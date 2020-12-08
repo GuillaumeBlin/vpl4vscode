@@ -49,7 +49,20 @@ const config = (process.env.VSCODE_NLS_CONFIG ? JSON.parse(process.env.VSCODE_NL
 var dico: any = dicoen;
 var faq: vscode.Uri, faqFolder: vscode.Uri;
 var cookies: string = '';
-var currentInfos;
+var gettingValidCookies: boolean = false;
+var ignoreTextDocumentOpen: boolean = false;
+var gettingOnDemandValidToken: boolean = false;
+var currentInfos: {
+	httpsAddress: string;
+	wsToken: string;
+	activityId: string;
+	httpsViewerAddress: string;
+} = {
+	httpsAddress: "",
+	wsToken: "",
+	activityId: "",
+	httpsViewerAddress: ""
+};
 var optget: (IRequestGetOptions | undefined);
 var browser: (puppeteer.Browser | undefined);
 if (config && config['locale'] === 'fr') {
@@ -89,7 +102,9 @@ interface BRaw {
 
 interface EvaluateRaw {
 	monitorURL: string;
+	smonitorURL: string;
 	executeURL: string;
+	sexecuteURL: string;
 	exception: string;
 	message: string;
 }
@@ -188,16 +203,32 @@ function encodeHTML(str: string) {
 
 
 
-async function getValidToken() {
+async function getValidToken(auto: boolean = true) {
+	if (!auto) {
+		gettingOnDemandValidToken = true;
+	}
+	if (!rest || gettingValidCookies || (auto && gettingOnDemandValidToken)) {
+		return;
+	}
 	if (currentFolder) {
 		//RETRIEVE THE VPL ACCESS INFORMATION FROM THE CURRENT FOLDER AND RETURN IT
 		var conf = vscode.workspace.getConfiguration('', currentFolder);
 		var httpsAddress: (string | undefined) = conf.get('VPL4VSCode.moodleAddress');
 		var activityId: (string | undefined) = conf.get('VPL4VSCode.activityId');
-		var wsToken: string = '';
 		if (httpsAddress && activityId) {
-			var resp = await fetch(httpsAddress + '/mod/vpl/views/show_webservice.php?id=' + activityId, { 'headers': { 'cookie': cookies } });
-			if (resp.redirected) {
+			var wsToken: string = '';
+			var resp;
+			try {
+				resp = await fetch(httpsAddress + '/mod/vpl/views/show_webservice.php?id=' + activityId, { 'headers': { 'cookie': cookies } });
+
+			} catch (err) {
+				resp = undefined;
+				commandDataProvider.refresh();
+				//commandDataProvider.setLog(dico["extension.vpl.renew_token"], dico["global.error.reachability"]);
+				await resetInformation();
+				commandDataProvider.refresh(1);
+			}
+			if (!resp || resp.redirected) {
 				await getValidCookies();
 				resp = await fetch(httpsAddress + '/mod/vpl/views/show_webservice.php?id=' + activityId, { 'headers': { 'cookie': cookies } });
 			}
@@ -205,15 +236,33 @@ async function getValidToken() {
 			wsToken = t.substring(t.indexOf("wstoken") + 8, t.indexOf("wstoken") + 40);
 			if (wsToken) {
 				await conf.update('VPL4VSCode.wsToken', wsToken, vscode.ConfigurationTarget.WorkspaceFolder);
-				console.log("Valid token obtained - "+wsToken);
+				console.log("Valid token obtained - " + wsToken);
+				if (!auto) {
+					gettingOnDemandValidToken = false;
+				}
 				return { "httpsAddress": httpsAddress, "wsToken": wsToken, "activityId": activityId, "httpsViewerAddress": httpsAddress + '/mod/vpl/views/view.php?id=' + activityId };
 			}
 		}
-	}else{
+	} else {
 		console.log("no valid token to get");
 	}
 	return undefined;
 
+}
+
+async function resetInformation() {
+	var host = await vscode.window.showInputBox({ value: "https://moodle1.u-bordeaux.fr", placeHolder: "Your Moodle server address", ignoreFocusOut: true });
+	if (!host) {
+		return;
+	}
+	var activityId = await vscode.window.showInputBox({ value: "218928", placeHolder: "The activity id", ignoreFocusOut: true });
+	if (!activityId) {
+		return;
+	}
+	//await setAccessInfo(host,activityId);
+	if (!currentFolder) {
+		await setProjectFolder(host, activityId);
+	}
 }
 
 async function getAccessInfo() {
@@ -223,10 +272,10 @@ async function getAccessInfo() {
 		var activityId: (string | undefined) = conf.get('VPL4VSCode.activityId');
 		var wsToken: (string | undefined) = conf.get('VPL4VSCode.wsToken');
 		if (httpsAddress && activityId && wsToken) {
-			return { "httpsAddress": httpsAddress, "wsToken": wsToken, "activityId": activityId, "httpsViewerAddress": httpsAddress + '/mod/vpl/views/view.php?id=' + activityId };
-		}
-		if (!wsToken) {
-			return await getValidToken();
+			currentInfos.httpsAddress = httpsAddress;
+			currentInfos.activityId = activityId;
+			currentInfos.wsToken = wsToken;
+			currentInfos.httpsViewerAddress = httpsAddress + '/mod/vpl/views/view.php?id=' + activityId;
 		}
 	}
 	return undefined;
@@ -248,7 +297,11 @@ async function setAccessInfo(host: string, activityId: string) {
 async function openFolder(folder: vscode.Uri) {
 
 	var files: string[] = fs.readdirSync(folder.fsPath);
+	ignoreTextDocumentOpen = true;
 	for (let file of files) {
+		if (file == files[files.length - 1]) {
+			ignoreTextDocumentOpen = false;
+		}
 		if (file !== ".vscode") {
 			var elem = vscode.Uri.file(folder.fsPath + "/" + file);
 			await vscode.window.showTextDocument(elem, { preview: false });
@@ -286,7 +339,9 @@ async function setProjectFolder(host: string, activityId: string) {
 				for (const added of e.added) {
 					setCurrentFolder(added.uri);
 					await setAccessInfo(host, activityId)
-					await getOriginalFiles(false, await getAccessInfo());
+					await getValidToken(false);
+					//					await getAccessInfo();
+					await getOriginalFiles(false);
 					await openFolder(added.uri);
 				}
 			});
@@ -297,7 +352,9 @@ async function setProjectFolder(host: string, activityId: string) {
 		if (wfolder) {
 			setCurrentFolder(wfolder.uri);
 			await setAccessInfo(host, activityId)
-			await getOriginalFiles(false, await getAccessInfo());
+			await getValidToken(false);
+			//			await getAccessInfo();
+			await getOriginalFiles(false);
 			await openFolder(wfolder.uri);
 		}
 	}
@@ -306,49 +363,46 @@ async function setProjectFolder(host: string, activityId: string) {
 }
 
 
-async function getFilesInfo(wsfunction: string, infos: any = undefined) {
+async function getFilesInfo(wsfunction: string) {
 	await addDefaultWorkspace();
-	var ok: boolean = true;
-	if (currentFolder) {
-		do {
-			infos = await getAccessInfo();
-			if (infos) {
-				try {
-					ok = true;
-					let res: rm.IRestResponse<BRaw> = await rest.get<BRaw>(infos.httpsAddress + '/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=' + infos.wsToken + '&id=' + infos.activityId + '&wsfunction=' + wsfunction, optget);
 
-					if (res.result) {
-						if (res.result.intro) {
-							await vscode.workspace.getConfiguration('', currentFolder).update('VPL4VSCode.intro', res.result.intro, vscode.ConfigurationTarget.WorkspaceFolder);
-						}
-						if (res.result.reqfiles) {
-							return res.result.reqfiles;
-						}
-						if (res.result.files) {
-							return res.result.files;
-						}
-						if (res.result.errorcode) {
-							//commandDataProvider.refresh(2);
-							//commandDataProvider.setLog(dico["extension.vpl.renew_token"], dico["global.error.reachability"] + " " + res.result.message);
-							ok = false;
-							infos = await getAccessInfo();
-						}
-					}
-				} catch (err) {
-					vscode.window.showErrorMessage(dico["global.error.reachability"] + " " + dico["global.error.connectivity"]);
-					commandDataProvider.refresh(2);
+	if (currentFolder) {
+		if (!rest) {
+			await getValidCookies();
+			await getValidToken(false);
+			await getAccessInfo();
+		}
+		try {
+			let res: rm.IRestResponse<BRaw> = await rest.get<BRaw>(currentInfos.httpsAddress + '/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=' + currentInfos.wsToken + '&id=' + currentInfos.activityId + '&wsfunction=' + wsfunction, optget);
+
+			if (res.result) {
+				if (res.result.intro) {
+					await vscode.workspace.getConfiguration('', currentFolder).update('VPL4VSCode.intro', res.result.intro, vscode.ConfigurationTarget.WorkspaceFolder);
+				}
+				if (res.result.reqfiles) {
+					return res.result.reqfiles;
+				}
+				if (res.result.files) {
+					return res.result.files;
+				}
+				if (res.result.errorcode) {
+					await getValidToken(false);
 				}
 			}
-		} while (!ok);
+		} catch (err) {
+			//cas de rest === undefined
+			vscode.window.showErrorMessage(err);
+		}
+
 	}
 }
 
-async function getOriginalFilesInfo(infos: any = undefined) {
-	return await getFilesInfo('mod_vpl_info', infos);
+async function getOriginalFilesInfo() {
+	return await getFilesInfo('mod_vpl_info');
 }
 
-async function getUserCurrentFilesInfo(infos: any = undefined) {
-	return await getFilesInfo('mod_vpl_open', infos);
+async function getUserCurrentFilesInfo() {
+	return await getFilesInfo('mod_vpl_open');
 }
 
 function checkRequiredFilesArePresent(folder: vscode.Uri, files: VPLFile[]) {
@@ -462,37 +516,30 @@ async function createCompilationReport(text: string) {
 }
 
 async function display() {
-	var ok: boolean = true;
-	do {
-		var infos = await getAccessInfo();
-		if (infos) {
-			try {
-				ok = true;
-				let res: rm.IRestResponse<ResEvaluateRaw> = await rest.get<ResEvaluateRaw>(infos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + infos.wsToken + "&id=" + infos.activityId + "&wsfunction=mod_vpl_get_result", optget);
-				if (res.result) {
-					getOutputChannel().clear();
-					if (createCompilationReport("" + res.result.compilation)) {
-						getOutputChannel().appendLine("Evaluation:\n" + res.result.evaluation);
-						getOutputChannel().show(true);
-					}
-					commandDataProvider.setDescription(dico["extension.vpl.evaluate"], '' + res.result.grade, true);
-				}
-			} catch (err) {
-				ok = false;
-				//vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
-				//commandDataProvider.refresh(2);
+	try {
+		let res: rm.IRestResponse<ResEvaluateRaw> = await rest.get<ResEvaluateRaw>(currentInfos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + currentInfos.wsToken + "&id=" + currentInfos.activityId + "&wsfunction=mod_vpl_get_result", optget);
+		if (res.result) {
+			getOutputChannel().clear();
+			if (createCompilationReport("" + res.result.compilation)) {
+				getOutputChannel().appendLine("Evaluation:\n" + res.result.evaluation);
+				getOutputChannel().show(true);
 			}
+			commandDataProvider.setDescription(dico["extension.vpl.evaluate"], '' + res.result.grade, true);
 		}
-	} while (!ok);
+	} catch (err) {
+		commandDataProvider.refresh();
+		await getValidToken(false);
+		commandDataProvider.refresh(1);		
+	}
 }
 
-async function getOriginalFiles(user: boolean = false, infos: any = undefined) {
+async function getOriginalFiles(user: boolean = false) {
 	if (currentFolder) {
 		let files: (VPLFile[] | undefined);
 		if (user) {
-			files = await getUserCurrentFilesInfo(infos);
+			files = await getUserCurrentFilesInfo();
 		} else {
-			files = await getOriginalFilesInfo(infos);
+			files = await getOriginalFilesInfo();
 		}
 		if (files) {
 			writeFiles(currentFolder, files);
@@ -526,33 +573,29 @@ async function saveUserFiles() {
 		if (editor) {
 			let folder = vscode.Uri.file(path.dirname(editor.document.uri.fsPath));
 			if (checkRequiredFilesArePresent(folder, files)) {
-				var ok: boolean = true;
-				do {
-					var infos = await getAccessInfo();
-					if (infos) {
-						ok = true;
-						try {
-							var filedata = readFiles(vscode.Uri.file(path.dirname(editor.document.uri.fsPath)), files);
-							var res = await rest.client.post(infos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=mod_vpl_save' + filedata, "", optget);
-							let body: VPLException = JSON.parse(await res.readBody());
-							if (body) {
-								ok = false;
-							} else {
-								if (checkFilesAreCorrectlySaved(folder)) {
-									commandDataProvider.setDescription(dico["extension.vpl.save"], dico["saveUserFiles.filesaved"]);
-									setTimeout(() => {
-										commandDataProvider.setDescription(dico["extension.vpl.save"], '');
-									}, 2000);
-									return true;
-								}
-							}
-						} catch (err) {
-							//vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
-							//commandDataProvider.refresh(2);
-							ok = false;
+				try {
+					var filedata = readFiles(vscode.Uri.file(path.dirname(editor.document.uri.fsPath)), files);
+					var res = await rest.client.post(currentInfos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + currentInfos.wsToken + "&id=" + currentInfos.activityId + '&wsfunction=mod_vpl_save' + filedata, "", optget);
+					let body: VPLException = JSON.parse(await res.readBody());
+					if (body) {
+						return false;
+					} else {
+						if (checkFilesAreCorrectlySaved(folder)) {
+							commandDataProvider.setDescription(dico["extension.vpl.save"], dico["saveUserFiles.filesaved"]);
+							setTimeout(() => {
+								commandDataProvider.setDescription(dico["extension.vpl.save"], '');
+							}, 2000);
+							return true;
 						}
 					}
-				} while (!ok);
+				} catch (err) {
+					commandDataProvider.refresh();
+					await getValidToken(false);
+					commandDataProvider.refresh(1);
+					//vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
+					//commandDataProvider.refresh(2);
+				}
+
 			}
 		}
 	}
@@ -563,69 +606,72 @@ async function saveUserFiles() {
 async function evaluateUserFiles() {
 	await addDefaultWorkspace();
 	let done: boolean = await saveUserFiles();
-	var ok: boolean = true;
 	if (done) {
-		do {
-			ok = true;
-			var infos = await getAccessInfo();
-			if (infos) {
-				try {
-					let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=mod_vpl_evaluate', optget);
-					if (res.result) {
-						if (res.result.exception) {
-							ok = false;
-						} else {
-							return new Promise((resolve) => {
-								const WebSocket = require('ws');
-								if (res.result === null) {
-									resolve();
-									return;
-								}
-								var URL = res.result.monitorURL;
-								const ws = new WebSocket(URL);
-								ws.on('error', function incoming() {
-									vscode.window.showErrorMessage(dico["global.ws.reachability"] + URL);
-								});
-								ws.on('close', function open() {
-									resolve();
-								});
-								ws.on('open', function open() {
-									commandDataProvider.setDescription(dico["extension.vpl.evaluate"], dico["global.ws.connecting"]);
-								});
-								ws.on('message', function incoming(data: string) {
-									commandDataProvider.setDescription(dico["extension.vpl.evaluate"], data.substr(data.indexOf(":") + 1));
-									if (data === "retrieve:") {
-										display();
-										commandDataProvider.setDescription(dico["extension.vpl.evaluate"], dico["global.ws.done"]);
-										resolve();
-									}
-								});
-							});
+		try {
+			let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(currentInfos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + currentInfos.wsToken + "&id=" + currentInfos.activityId + '&wsfunction=mod_vpl_evaluate', optget);
+			if (res.result) {
+				if (res.result.exception) {
+					vscode.window.showErrorMessage(dico["global.ws.evaluation.error"]);
+				} else {
+					return new Promise((resolve) => {
+						const WebSocket = require('ws');
+						if (res.result === null) {
+							resolve();
+							return;
 						}
-
-					} else {
-						ok = false;
-						//vscode.window.showErrorMessage(dico["global.ws.evaluation.error"]);
-					}
-				} catch (err) {
-					ok = false;
-					//vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
-					//commandDataProvider.refresh(2);
+						var URL = (res.result.smonitorURL?res.result.smonitorURL:res.result.monitorURL);
+						const ws = new WebSocket(URL);
+						ws.on('error', function incoming() {
+							vscode.window.showErrorMessage(dico["global.ws.reachability"] + URL);
+						});
+						ws.on('close', function open() {
+							resolve();
+						});
+						ws.on('open', function open() {
+							commandDataProvider.setDescription(dico["extension.vpl.evaluate"], dico["global.ws.connecting"]);
+						});
+						ws.on('message', function incoming(data: string) {
+							commandDataProvider.setDescription(dico["extension.vpl.evaluate"], data.substr(data.indexOf(":") + 1));
+							if (data === "retrieve:") {
+								display();
+								commandDataProvider.setDescription(dico["extension.vpl.evaluate"], dico["global.ws.done"]);
+								resolve();
+							}
+						});
+					});
 				}
+
+			} else {
+				vscode.window.showErrorMessage(dico["global.ws.evaluation.error"]);
 			}
-		} while (!ok);
+		} catch (err) {
+			commandDataProvider.refresh();
+			await getValidToken(false);
+			commandDataProvider.refresh(1);
+		}
+
 	}
 
 }
 
 async function getValidCookies() {
-	if (currentFolder) {
-		//RETRIEVE THE VPL ACCESS INFORMATION FROM THE CURRENT FOLDER AND RETURN IT
+	if (currentFolder && !gettingValidCookies) {
 		var conf = vscode.workspace.getConfiguration('', currentFolder);
 		var x = conf.inspect('VPL4VSCode.moodleAddress');
 
 		var httpsAddress: (string | undefined) = conf.get('VPL4VSCode.moodleAddress');
 		var activityId: (string | undefined) = conf.get('VPL4VSCode.activityId');
+		try {
+			var resp = await fetch(httpsAddress + '');
+			if ((!resp.ok) || resp.redirected) {
+				var err = resp.statusText
+				await resetInformation();
+			}
+		} catch (err) {
+			console.log(err);
+			await resetInformation();
+		}
+
 		var localcookies: (string | undefined) = conf.get('VPL4VSCode.moodleCookies');
 		if (localcookies) {
 			var resp = await fetch(httpsAddress + '/mod/vpl/views/show_webservice.php?id=' + activityId, { 'headers': { 'cookie': localcookies } });
@@ -655,6 +701,7 @@ async function getValidCookies() {
 			}
 
 		}
+		gettingValidCookies = true;
 		browser = await puppeteer.launch({ args: ['--disable-web-security',], "headless": false });
 		const pages = await browser.pages();
 		const page = pages[0];
@@ -683,6 +730,7 @@ async function getValidCookies() {
 		};
 
 		rest = new rm.RestClient('Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.183 Safari/537.36', undefined, undefined, opt);
+		gettingValidCookies = false;
 	}
 
 }
@@ -692,115 +740,113 @@ async function runUserFiles(debug = false) {
 	await addDefaultWorkspace();
 	let done: boolean = await saveUserFiles();
 	if (done) {
-		var ok: boolean = true;
-		do {
-			ok = true;
-			var infos = await getAccessInfo();
-			if (infos) {
-				try {
-					commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.processing"]);
-					let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(infos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + infos.wsToken + "&id=" + infos.activityId + '&wsfunction=' + (debug ? 'mod_vpl_debug' : 'mod_vpl_run'), optget);
-					if (res.result) {
-						if (res.result.exception) {
-							ok = false;
+		try {
+			commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.processing"]);
+			let res: rm.IRestResponse<EvaluateRaw> = await rest.get<EvaluateRaw>(currentInfos.httpsAddress + "/mod/vpl/webservice.php?moodlewsrestformat=json&wstoken=" + currentInfos.wsToken + "&id=" + currentInfos.activityId + '&wsfunction=' + (debug ? 'mod_vpl_debug' : 'mod_vpl_run'), optget);
+			if (res.result) {
+				if (res.result.exception) {
+					vscode.window.showErrorMessage(dico["global.ws.evaluation.error"]);
+				} else {
+					return new Promise((resolve) => {
+						const WebSocket = require('ws');
+						if (res.result === null) {
+							resolve();
+							return;
 						} else {
-							return new Promise((resolve) => {
-								const WebSocket = require('ws');
-								if (res.result === null) {
-									resolve();
-									return;
-								} else {
-									var URLm = res.result.monitorURL;
-									var URLe = res.result.executeURL;
-									var ws = new WebSocket(URLm);
-									var abort = false;
-									ws.on('error', function incoming() {
-										vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
-									});
+							var URLm = (res.result.smonitorURL?res.result.smonitorURL:res.result.monitorURL);
+							var URLe = (res.result.sexecuteURL?res.result.sexecuteURL:res.result.executeURL);
+							var ws = new WebSocket(URLm);
+							var abort = false;
+							ws.on('error', function incoming() {
+								vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
+							});
 
-									ws.on('close', function open() {
-										setTimeout(() => {
-											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), '');
-										}, 2000);
-										resolve();
-									});
+							ws.on('close', function open() {
+								setTimeout(() => {
+									commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), '');
+								}, 2000);
+								resolve();
+							});
 
-									ws.on('open', function open() {
-										commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.connecting"]);
-									});
-									ws.on('message', async function incoming(data: string) {
-										if (!abort) {
-											var d = data.replace("message:", "");
-											//console.log(data);
-											if (data.startsWith("compilation:")) {
-												var problem: boolean | undefined = await createCompilationReport("" + data.substr(12));
-												if (!problem) {
-													abort = true;
-													commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["extension.vpl.compilation_problem"]);
-													ws.send("close:");
-													ws.close();
-													resolve();
-													return;
-												}
-											}
-											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), d.charAt(0).toUpperCase() + d.slice(1));
-											if (data.startsWith("run:vnc")) {
-												var path = URLe.slice(URLe.lastIndexOf("/", URLe.lastIndexOf("/", URLe.lastIndexOf("/") - 1) - 1) + 1);
-												var host = URLe.substr(6, URLe.indexOf(path) - 6);
-												var url = 'http://localhost:33400/vnc/vnc_lite.html?host=' + host + '&password=' + data.slice(8) + '&path=' + path;
-												openweb(url);
-											}
-											if (data === "run:terminal") {
-												const wse = new WebSocket(URLe);
-												let writeEmitter = new vscode.EventEmitter<string>();
-												let pty: any = {
-													onDidWrite: writeEmitter.event,
-													open: () => { },
-													close: () => { },
-													handleInput: (data: string) => {
-														wse.send(data);
-													}
-												};
-												if (VPLShell) {
-													VPLShell.dispose();
-												}
-												VPLShell = (<any>vscode.window).createTerminal({ name: `VPL Shell`, pty });
-												vscode.commands.executeCommand('workbench.action.terminal.clear');
-												VPLShell.show();
-
-												wse.on('error', function incoming() {
-													vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
-												});
-
-												wse.on('close', function open() {
-													commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), '');
-													ws.close();
-													resolve();
-												});
-
-												wse.on('open', function open() {
-													commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.connecting"]);
-												});
-
-												wse.on('message', function incoming(data: string) {
-													writeEmitter.fire(data);
-												});
-											}
+							ws.on('open', function open() {
+								commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.connecting"]);
+							});
+							ws.on('message', async function incoming(data: string) {
+								if (!abort) {
+									var d = data.replace("message:", "");
+									//console.log(data);
+									if (data.startsWith("compilation:")) {
+										var problem: boolean | undefined = await createCompilationReport("" + data.substr(12));
+										if (!problem) {
+											abort = true;
+											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["extension.vpl.compilation_problem"]);
+											ws.send("close:");
+											ws.close();
+											resolve();
+											return;
 										}
-									});
-								}
+									}
+									commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), d.charAt(0).toUpperCase() + d.slice(1));
+									if (data.startsWith("run:vnc")) {
+										var path = URLe.slice(URLe.lastIndexOf("/", URLe.lastIndexOf("/", URLe.lastIndexOf("/") - 1) - 1) + 1);
+										var host = URLe.substr(6, URLe.indexOf(path) - 6);
+										var url = 'http://localhost:33400/vnc/vnc_lite.html?host=' + host + '&password=' + data.slice(8) + '&path=' + path;
+										openweb(url);
+									}
+									if (data === "run:terminal") {
+										const wse = new WebSocket(URLe);
+										let writeEmitter = new vscode.EventEmitter<string>();
+										let pty: any = {
+											onDidWrite: writeEmitter.event,
+											open: () => { },
+											close: () => { },
+											handleInput: (data: string) => {
+												wse.send(data);
+											}
+										};
+										if (VPLShell) {
+											VPLShell.dispose();
+										}
 
+										VPLShell = (<any>vscode.window).createTerminal({ name: `VPL Shell`, pty });
+										await vscode.commands.executeCommand('workbench.action.terminal.clear');
+										VPLShell.show();
+
+
+										wse.on('error', function incoming() {
+											vscode.window.showErrorMessage(dico["global.ws.reachability"] + URLm);
+										});
+
+										wse.on('close', function open() {
+											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), '');
+											ws.close();
+											resolve();
+										});
+
+										wse.on('open', function open() {
+											commandDataProvider.setDescription((debug ? dico["extension.vpl.debug"] : dico["extension.vpl.run"]), dico["global.ws.connecting"]);
+										});
+
+										wse.on('message', function incoming(data: string) {
+											writeEmitter.fire(data);
+										});
+									}
+								}
 							});
 						}
-					}
 
-				} catch (err) {
-					ok = false;
-					//vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
-					//commandDataProvider.refresh(2);
+					});
 				}
 			}
-		} while (!ok);
+
+		} catch (err) {
+			commandDataProvider.refresh();
+			await getValidToken(false);
+			commandDataProvider.refresh(1);
+			//vscode.window.showErrorMessage(dico["global.error.reachability"] + ' ' + dico["global.error.connectivity"]);
+			//commandDataProvider.refresh(2);
+		}
+
 	}
 }
 
@@ -813,6 +859,11 @@ async function addDefaultWorkspace() {
 async function openFAQ() {
 	await addDefaultWorkspace();
 	vscode.commands.executeCommand("markdown.showPreview", faq);
+}
+
+async function repeatGetValidToken() {
+	await getValidToken();
+	setTimeout(async function () { await repeatGetValidToken() }, 10000);
 }
 
 export async function activate(context: vscode.ExtensionContext) {
@@ -839,10 +890,10 @@ export async function activate(context: vscode.ExtensionContext) {
 						const savedCurrentFolder = currentFolder;
 						for (const e of vscode.workspace.workspaceFolders) {
 							await setCurrentFolder(e.uri);
-							var infos = await getAccessInfo();
-							if (infos && "" + infos.activityId === id) {
+							await getAccessInfo();
+							if ("" + currentInfos.activityId === id) {
 								openFolder(e.uri);
-								vscode.commands.executeCommand("extension.vpl_renewtoken", query, e.uri);
+								await getValidToken(false);
 								return;
 							}
 						}
@@ -860,26 +911,25 @@ export async function activate(context: vscode.ExtensionContext) {
 	commandDataProvider = new VPLNodeProvider(context);
 
 	vscode.window.onDidChangeActiveTextEditor(async (textEditor) => {
-		if (!textEditor) {
+		if (!textEditor || ignoreTextDocumentOpen) {
 			return;
 		}
+		commandDataProvider.setDescription(dico["extension.vpl.open"], dico["global.ws.processing"]);
 		var worksp = vscode.workspace.getWorkspaceFolder(textEditor.document.uri);
 		if (worksp) {
 			treeDataProvider.refresh(worksp);
 			var conf = vscode.workspace.getConfiguration('', worksp.uri);
-			if (conf.get("VPL4VSCode.wsToken", vscode.ConfigurationTarget.WorkspaceFolder)) {
+			if (conf.get('VPL4VSCode.moodleAddress', vscode.ConfigurationTarget.WorkspaceFolder)) {
 				currentFolder = worksp.uri;
-				var infos = await getAccessInfo();
-				var tokenValid = await getOriginalFilesInfo(infos);
-				if (tokenValid) {
-					commandDataProvider.refresh(1);
-				} else {
-					commandDataProvider.refresh(2);
-				}
+				await getAccessInfo();
+				await getOriginalFilesInfo();
+				commandDataProvider.refresh(1);
+
 			} else {
 				commandDataProvider.refresh();
 			}
 		}
+		commandDataProvider.setDescription(dico["extension.vpl.open"], '');
 	});
 
 	vscode.window.registerTreeDataProvider("vpl-commands", commandDataProvider);
@@ -935,17 +985,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					return;
 				}
 				if (value == dico["extension.open.new"]) {
-					var host = await vscode.window.showInputBox({ value: "https://moodle1.u-bordeaux.fr", placeHolder: "Your Moodle server address", ignoreFocusOut: true });
-					if (!host) {
-						return;
-					}
-					var activityId = await vscode.window.showInputBox({ value: "218928", placeHolder: "The activity id", ignoreFocusOut: true });
-					if (!activityId) {
-						return;
-					}
-					//await setAccessInfo(host,activityId);
-					await setProjectFolder(host, activityId);
-
+					await resetInformation();
 				}
 				if (value == dico["extension.open.existing"]) {
 					const options: vscode.OpenDialogOptions = {
@@ -957,7 +997,7 @@ export async function activate(context: vscode.ExtensionContext) {
 					vscode.workspace.onDidChangeWorkspaceFolders(async e => {
 						for (const added of e.added) {
 							setCurrentFolder(added.uri);
-							openFolder(added.uri);
+							await openFolder(added.uri);
 						}
 					});
 					vscode.window.showOpenDialog(options).then(async f => {
@@ -968,7 +1008,7 @@ export async function activate(context: vscode.ExtensionContext) {
 							const selected = vscode.workspace.getWorkspaceFolder(folder);
 							if (selected) { //already an open workspace
 								setCurrentFolder(selected.uri);
-								openFolder(selected.uri);
+								await openFolder(selected.uri);
 
 							} else {
 								vscode.workspace.updateWorkspaceFolders(nbFolders, 0, { uri: folder });
@@ -990,11 +1030,12 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	context.subscriptions.push(disposable);
 
-	disposable = vscode.commands.registerCommand('extension.vpl_renewtoken', async (url: string = '', uri: vscode.Uri | undefined = undefined) => {
+	/*disposable = vscode.commands.registerCommand('extension.vpl_renewtoken', async (url: string = '', uri: vscode.Uri | undefined = undefined) => {
 		try {
 			await addDefaultWorkspace();
 			commandDataProvider.setDescription(dico["extension.vpl.renew_token"], dico["global.ws.processing"]);
-			var infos = await getAccessInfo();
+			await getAccessInfo();
+			await get
 			if (infos && infos.activityId) {
 
 				setCurrentFolder();
@@ -1005,48 +1046,12 @@ export async function activate(context: vscode.ExtensionContext) {
 					commandDataProvider.refresh(1);
 				}, 2000);
 			}
-			/*
-			else{
-				if (url === '') {
-					url = await vscode.env.clipboard.readText();
-				}
-			if (url.indexOf("wstoken") > -1) {
-				commandDataProvider.refresh(3);
-				var editor = vscode.window.activeTextEditor;
-				var folder: string;
-				if (!uri && editor) {
-					uri = editor.document.uri;
-					folder = uri.fsPath;
-					if (uri.scheme === "file") {
-						folder = path.dirname(uri.fsPath);
-					}
-				} else {
-					if (uri) {
-						folder = uri.fsPath;
-					} else {
-						vscode.window.showErrorMessage(dico["extension.vpl_open.error"]);
-						return;
-					}
-				}
-				if (uri) {
-					setCurrentFolder(vscode.Uri.file(folder));
-					await setAccessInfo(url);
-					commandDataProvider.setDescription(dico["extension.vpl.renew_token"], dico["extension.vpl_renewtoken.info"]);
-					setTimeout(() => {
-						commandDataProvider.setDescription(dico["extension.vpl.renew_token"], '');
-						commandDataProvider.refresh(1);
-					}, 2000);
-				}
-				
-			} else {
-				vscode.window.showErrorMessage(dico["extension.vpl_open.error"]);
-			}*/
 		} finally {
 			commandDataProvider.setDescription(dico["extension.vpl.renew_token"], '');
 		}
 	});
 
-	context.subscriptions.push(disposable);
+	context.subscriptions.push(disposable);*/
 
 	disposable = vscode.commands.registerCommand('extension.vpl_load', async () => {
 		try {
@@ -1172,7 +1177,7 @@ export async function activate(context: vscode.ExtensionContext) {
 		vscode.commands.executeCommand("extension.liveServer.goOnline")
 	}
 
-	setInterval(()=>{getValidToken();},10000);
+	repeatGetValidToken();
 }
 
 // this method is called when your extension is deactivated
